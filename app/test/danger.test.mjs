@@ -1,8 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {buildDanger,dangerColour} from '../public/danger.js';
+import {buildDanger,dangerColour,teamScaleColour} from '../public/danger.js';
 const demo=JSON.parse(await readFile(new URL('../public/demo.json',import.meta.url),'utf8'));
+test('team colours match scale endpoints and switch at halftime',()=>{const m=demo.metadata;assert.equal(teamScaleColour(m.away_team.id,m,1),'#2a7eff');assert.equal(teamScaleColour(m.home_team.id,m,1),'#f4444e');assert.equal(teamScaleColour(m.home_team.id,m,2),'#2a7eff');assert.equal(dangerColour(-1),'rgb(42,126,255)');assert.equal(dangerColour(1),'rgb(244,68,78)');});
+test('small genuine threats are visible without changing score or frame normalization',()=>{assert.equal(dangerColour(0),'rgb(236,238,241)');assert.notEqual(dangerColour(.001),dangerColour(0));const red=dangerColour(.001).match(/\d+/g).map(Number);assert.ok(red[1]<200);assert.notEqual(dangerColour(.001),dangerColour(.01));assert.equal(dangerColour(NaN),'#b5bdc5');});
 test('real frames produce bounded, changing current and potential estimates',()=>{const scores=[];for(let i=0;i<demo.frames.length;i+=10){const d=buildDanger(demo.frames[i],demo.frames[i-1],demo.metadata);assert.equal(d.left.id,demo.metadata.away_team.id);assert.equal(d.right.id,demo.metadata.home_team.id);assert.ok(Number.isFinite(d.current)&&Math.abs(d.current)<=1);scores.push(d.current);for(const x of [-30,0,30])assert.ok(Math.abs(d.potential({x,y:0}))<=1);}assert.ok(new Set(scores.map(x=>x.toFixed(6))).size>5);});
 test('signed score rewards each attacking direction and responds to position',()=>{const m={pitch_length:104,pitch_width:68,home_team:{id:1,name:'Home'},away_team:{id:2,name:'Away'},home_team_side:['left_to_right','right_to_left'],players:[{id:11,team_id:1},{id:22,team_id:2}]};
  const frame={frame:10,period:1,possession:{player_id:11},ball_data:{x:40,y:0,is_detected:true},player_data:[{player_id:11,x:40,y:0,is_detected:true},{player_id:22,x:-30,y:20,is_detected:true}]};

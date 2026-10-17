@@ -2,7 +2,16 @@
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const sigmoid=x=>1/(1+Math.exp(-clamp(x,-30,30)));
-export function dangerColour(value){if(value==null)return '#b5bdc5';const t=Math.abs(clamp(value,-1,1)),end=value<0?[42,126,255]:[244,68,78];return `rgb(${end.map((c,i)=>Math.round([236,238,241][i]+(c-[236,238,241][i])*t)).join(',')})`;}
+export function teamScaleColour(team,meta,period){
+ const homeDirection=meta.home_team_side?.[Number(period)-1];
+ if(!['left_to_right','right_to_left'].includes(homeDirection))return '#b5bdc5';
+ const leftId=homeDirection==='left_to_right'?meta.home_team.id:meta.away_team.id;
+ if(team!==meta.home_team.id&&team!==meta.away_team.id)return '#b5bdc5';
+ return team===leftId?'#2a7eff':'#f4444e';
+}
+// Fixed log contrast: raw values retain their original [-1,1] meaning.
+// Never normalize by this frame's extrema (which would exaggerate quiet frames).
+export function dangerColour(value){if(value==null||!Number.isFinite(value))return '#b5bdc5';const t=Math.log1p(Math.abs(clamp(value,-1,1))*10000)/Math.log1p(10000),end=value<0?[42,126,255]:[244,68,78];return `rgb(${end.map((c,i)=>Math.round([236,238,241][i]+(c-[236,238,241][i])*t)).join(',')})`;}
 export function buildDanger(frame,previous,meta){
  const direction=meta.home_team_side?.[Number(frame.period)-1];
  const left=direction==='left_to_right'?meta.home_team:direction==='right_to_left'?meta.away_team:null;

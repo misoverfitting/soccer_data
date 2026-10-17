@@ -2,6 +2,12 @@ import {vertices,area,inside} from './geometry.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
 let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=null,transform,request=0;
 const say=s=>$('status').textContent=s;
+function centerInitialMobileMesh(){
+ if(!frames.length||!window.matchMedia('(max-width: 900px)').matches)return;
+ // Wait for the initial frame to paint; do this only at startup so later
+ // playback, clip loads and control changes never pull the user away.
+ requestAnimationFrame(()=>canvas.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
+}
 async function get(url){const r=await fetch(url);const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data;}
 function configure(m){meta=m;$('title').textContent=`${m.home_team.name} vs ${m.away_team.name}`;$('dimensions').textContent=`${m.pitch_length} × ${m.pitch_width} m`;$('team').replaceChildren(new Option('Both teams','all'),new Option(m.home_team.name,String(m.home_team.id)),new Option(m.away_team.name,String(m.away_team.id)));}
 function install(data){frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
@@ -28,4 +34,4 @@ $('play').onclick=()=>{if(index>=frames.length-1)index=0;playing=!playing;last=p
 $('scrub').oninput=()=>{index=Number($('scrub').value);playing=false;$('play').textContent='▶ Play';draw();};
 for(const id of ['mode','team','colour','ball','ballOnly','detected'])$(id).onchange=()=>{selected=null;$('inspect').textContent=$('mode').value==='voronoi'?'Cells show proximity to each selected site; ball cells are neutral.':'Pause and click a triangle to inspect it.';draw();};
 function tick(now){if(playing&&frames.length){const dt=100/Number($('speed').value);if(now-last>=dt){index=Math.min(frames.length-1,index+Math.floor((now-last)/dt));last=now;draw();if(index===frames.length-1){playing=false;$('play').textContent='▶ Replay';}}}requestAnimationFrame(tick);}requestAnimationFrame(tick);window.addEventListener('resize',draw);
-await demo();try{const matches=await get('/api/matches');$('match').replaceChildren(...matches.map(m=>new Option(m.label,String(m.id))));$('match').value='1886347';await choose();}catch(e){say(`Demo available; match catalogue unavailable: ${e.message}`);}
+await demo();centerInitialMobileMesh();try{const matches=await get('/api/matches');$('match').replaceChildren(...matches.map(m=>new Option(m.label,String(m.id))));$('match').value='1886347';await choose();}catch(e){say(`Demo available; match catalogue unavailable: ${e.message}`);}

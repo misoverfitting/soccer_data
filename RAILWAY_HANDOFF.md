@@ -18,6 +18,18 @@ Requires Node 22+: `npm start`, then open http://localhost:3000. No npm install 
 
 ## Behaviour and limits
 
+### Dynamic danger overlay
+
+The ball radius is 4.6 CSS pixels (15% larger than the original 4). Ball fill shows current signed danger; select **Potential danger** to colour tiles by their centroid's prospective danger (Voronoi mode samples at each site).
+
+Negative/blue is the team defending the left goal and attacking right; positive/red is the opposite team. This mapping comes from match metadata for the current period and switches at halftime; it is not a permanent home/away mapping. The scale is fixed [-1, 1], with neutral white and unavailable grey. There is no per-frame min/max colour normalization.
+
+This is an **uncalibrated spatial EPV proxy**, calculated every frame, not the provider's event-level EPV or an empirically validated probability of scoring. Spatial value combines exponential goal-distance decay (24 m), visible goal angle and opposing-player pressure (3 m decay). Known possession selects the attacking team; otherwise relative arrival times provide soft possession weights. Arrival estimates use reaction time 0.7 s, movement speed 5 m/s and previous-frame velocity capped at 9 m/s. Potential value further weights prospective passes by ball travel at 15 m/s, receiver readiness and interception margins at four samples along the pass. Constants are transparent research defaults, not fitted parameters. Typical values are much closer to zero than to the endpoints. A high value is relative model danger, not a calibrated chance percentage. Missing ball/direction/team data makes the score unavailable.
+
+All available players contribute to the danger model, independently of mesh team/detection filters. Estimated positions are included and flagged. Changing mesh filters therefore does not change the underlying ball danger. Physical ball height, acceleration, body orientation, deliberate pass choice and goalkeeper-specific shot stopping are not modelled. Use larger labelled outcome data to calibrate or replace this baseline before interpreting values as scoring probabilities.
+
+Thick solid mint/blue edges join teammates; amber dashed edges join different teams or the ball. Vertex outlines still flag estimated positions. The tile fill remains independent of the edge encoding.
+
 - Real demo: 300 frames (30 seconds) from match 1886347, source frames 10–309, bundled with metadata. The rest of the 20-match catalogue is read from repository metadata and phase CSVs.
 - Tracking media is pinned to the reviewed base commit, rather than silently changing upstream. Git LFS checkout is not required to run the app: all extra tracking is fetched server-side.
 - Coordinates and triangulation stay in physical metres, with actual match dimensions and raw stadium orientation. No synthetic pitch-corner vertices are added. Triangle areas refer to full geometric triangles; graphics are clipped to the pitch, so off-pitch triangles can have larger measured areas than their visible portion.

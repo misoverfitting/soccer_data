@@ -3,7 +3,17 @@ import {vertices,area,inside} from './geometry.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
 let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=null,transform,request=0;
 let chances=[],loadedChance=null;
-const say=s=>$('status').textContent=s;
+const say=s=>{$('status').textContent=s;$('viewerStatus').textContent=s;};
+const mobileLayout=window.matchMedia('(max-width: 900px)');
+function setControlLayout(){for(const id of ['momentControls','meshControls'])$(id).open=!mobileLayout.matches;}
+setControlLayout();
+mobileLayout.addEventListener?.('change',()=>{setControlLayout();requestAnimationFrame(draw);});
+function showControls(id){$(id).open=true;$(id).scrollIntoView({block:'start',behavior:'smooth'});}
+$('showChances').onclick=()=>showControls('momentControls');
+$('showMesh').onclick=()=>showControls('meshControls');
+function leaveFocus(){document.body.classList.remove('pitch-focus');$('focusPitch').textContent='Expand pitch';$('focusPitch').setAttribute('aria-pressed','false');requestAnimationFrame(draw);}
+$('focusPitch').onclick=()=>{if(document.body.classList.contains('pitch-focus')){leaveFocus();return;}document.body.classList.add('pitch-focus');$('focusPitch').textContent='Exit expanded view';$('focusPitch').setAttribute('aria-pressed','true');requestAnimationFrame(draw);};
+window.addEventListener('keydown',e=>{if(e.key==='Escape')leaveFocus();});
 function centerInitialMobileMesh(){
  if(!frames.length||!window.matchMedia('(max-width: 900px)').matches)return;
  // Wait for the initial frame to paint; do this only at startup so later
@@ -15,7 +25,7 @@ function configure(m){meta=m;$('title').textContent=`${m.home_team.name} vs ${m.
 function install(data){loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
 async function demo(){const token=++request;try{const d=await get('/demo.json');if(token!==request)return;configure(d.metadata);install(d.frames);$('context').textContent='Bundled opening clip · real tracking · stadium orientation';say('Demo ready. Select a match and phase to explore another clip.');}catch(e){say(e.message);}}
 function teamColour(team){return teamScaleColour(team,meta,frames[index]?.period);}
-function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
+function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],points=vertices(f,meta,{team:$('team').value,ball:$('ball').checked,detectedOnly:$('detected').checked});
  const danger=buildDanger(f,frames[index-1],meta);
  $('danger').textContent=danger.current==null?'Unavailable':danger.current.toFixed(3);

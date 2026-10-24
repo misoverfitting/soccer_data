@@ -63,3 +63,12 @@ The event annotations are incomplete in places: match 1886347's metadata reports
 To rebuild after changing source event data, run `node app/scripts/build-chances.mjs`, review the resulting JSON and commit it. Railway reads the precomputed catalogue at startup; it does not scan 100 MB of CSVs to discover chances on each request. Existing Dockerfile and Railway settings continue to work. The clip API now accepts optional `end` and `period` bounds to avoid bleeding through gaps into another half.
 
 Validation: automated catalogue checks cover all 20 matches and all recorded shot anchors; client harness covers selection, exact API parameters, countdown and jump-to-shot; HTTP tests cover phase bounds and gaps. A real goal clip for match 1886347 was retrieved successfully at frames 50399–50679 including goal marker 50599. Interactive browser visual verification was unavailable in this session.
+
+
+## Mobile layout
+
+At widths up to 900 px the pitch appears before the controls. **Choose chance** and **Mesh settings** shortcuts open and scroll to their native disclosure panels beneath the viewer. Custom frame/phase entry is nested under **Custom frames & phases**. Desktop keeps its sidebar with the primary panels expanded. Loading a chance still returns to the pitch; initial mobile mesh centering remains enabled. A mirrored status message next to the viewer reports loading/errors even when the control panels are closed.
+
+**Expand pitch** fills the available browser viewport with the pitch and playback controls, including on iOS browsers without the fullscreen API. Use **Exit expanded view** or Escape to return. Rotating the phone redraws the pitch. The layout uses safe-area insets and dynamic viewport height, 44 px touch targets, 16 px form text to avoid iOS input zoom, and a compact three-column playback row. The canvas permits vertical page scrolling and pinch zoom. Render pixel density is capped at 2x and the canvas backing store is resized only when dimensions change.
+
+Validation covers mobile and desktop client initialization, control shortcuts, expand/escape behaviour, chance selection, shot jumping and pixel-density bounds in the client harness. HTML structure and unique IDs were checked. Browser/device visual testing was unavailable during this update; check portrait/landscape on a real phone after deployment. Railway configuration is unchanged.

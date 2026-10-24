@@ -2,3 +2,44 @@
 
 .danger-panel{padding:12px 16px;margin-bottom:12px;border:1px solid #405461;border-radius:8px;background:#142128}.danger-panel strong{display:flex;justify-content:space-between}.danger-panel p{font-size:12px;color:#bbced5;margin:7px 0}.danger-panel small{letter-spacing:0;font-size:11px}.danger-scale{height:6px;border-radius:6px;margin-top:8px;background:linear-gradient(90deg,#2a7eff,#eceef1,#f4444e)}
 .scale-ticks{display:flex;justify-content:space-between}.legend span:first-child{color:#c8d6eb}
+
+/* Shared disclosure controls and a pitch-only view that also works on iOS. */
+main>*,aside,section,.scorebar>div{min-width:0}
+summary{cursor:pointer;font-size:14px;font-weight:650;padding:12px 0;min-height:44px;color:#e1ecee}
+details+details{border-top:1px solid #34474f;margin-top:12px;padding-top:4px}
+.control-body{padding-bottom:8px}
+.control-body details{margin:14px 0;border:1px solid #34474f;border-radius:8px;padding:0 10px}
+.mobile-tools,.mobile-status{display:none}
+.pitch-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;font-size:12px;color:#9ab2ba}
+.pitch-actions button{width:auto;min-height:44px;margin:0;padding:10px 16px}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #a6ead0;outline-offset:3px}
+button:disabled{opacity:.5;cursor:wait}
+[hidden]{display:none!important}
+#context,#chanceInfo,#chanceStage,#dangerTeams,#dangerQuality,#inspect,.legend{overflow-wrap:anywhere}
+#pitchStage{scroll-margin-top:12px}
+body.pitch-focus{overflow:hidden}
+.pitch-focus #pitchStage{position:fixed;inset:0;z-index:100;background:#0b1419;display:flex;flex-direction:column;padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));height:100vh;height:100dvh}
+.pitch-focus .pitch{flex:1;min-height:0}
+.pitch-focus canvas{width:100%;height:100%;aspect-ratio:auto}
+.pitch-focus .transport{flex-shrink:0;margin-bottom:0;position:static}
+@media(max-width:900px){
+ header{padding:14px 16px}header small{font-size:9px}h1{font-size:23px}
+ main{display:flex;flex-direction:column;gap:20px;padding:12px max(12px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+ #viewer{order:0;width:100%}aside{order:1;display:block;width:100%;padding:12px 16px}
+ .mobile-tools{display:flex;gap:10px;margin-bottom:8px}.mobile-tools button{margin:0;min-height:44px;flex:1}
+ .mobile-status{display:block;font-size:11px;margin:8px 0 12px}
+ input,select,button{font-size:16px;min-height:44px}select{width:100%;min-width:0;text-overflow:ellipsis}
+ label{font-size:13px}.row{gap:12px}.check{min-height:44px;margin:4px 0}.check input{min-height:24px;width:24px;height:24px;flex-shrink:0}
+ .scorebar{gap:12px;align-items:flex-start}.scorebar h2{font-size:16px;line-height:1.4}.scorebar p{font-size:11px;margin:5px 0 10px}#clock{font-size:18px;white-space:nowrap;padding-top:3px}
+ .danger-panel{padding:10px 12px}.danger-panel p{font-size:11px}.danger-panel small{font-size:10px}
+ .pitch-actions{font-size:11px}.pitch-actions button{font-size:13px}
+ canvas{aspect-ratio:1.5;touch-action:pan-y pinch-zoom}
+ .transport{gap:10px;background:#142128;border:1px solid #34474f;border-radius:10px;padding:8px;margin:8px 0;display:grid;grid-template-columns:minmax(80px,auto) minmax(0,1fr) 72px;align-items:center}
+ .transport button,.transport select{width:100%;margin:0;font-size:14px}.transport input{width:100%;margin:0;min-width:0;min-height:44px;touch-action:pan-y}
+ input[type=range]::-webkit-slider-thumb{width:24px;height:24px}input[type=range]::-moz-range-thumb{width:24px;height:24px}
+ .metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metrics div{padding:12px}.metrics strong{font-size:18px}.metrics small{font-size:9px;letter-spacing:1px}
+ .legend{gap:8px 14px;font-size:10px;line-height:1.6}article{padding:14px}article h2{margin-bottom:8px}article p{font-size:13px}
+ #jumpShot{margin-bottom:12px}footer{line-height:1.6}
+}
+@media(max-width:380px){.scorebar{flex-wrap:wrap}#clock{margin-left:auto}.mobile-tools button{font-size:14px}.transport{gap:6px;grid-template-columns:76px minmax(0,1fr) 65px;padding:6px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}

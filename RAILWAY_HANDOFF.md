@@ -72,3 +72,6 @@ At widths up to 900 px the pitch appears before the controls. **Choose chance** 
 **Expand pitch** fills the available browser viewport with the pitch and playback controls, including on iOS browsers without the fullscreen API. Use **Exit expanded view** or Escape to return. Rotating the phone redraws the pitch. The layout uses safe-area insets and dynamic viewport height, 44 px touch targets, 16 px form text to avoid iOS input zoom, and a compact three-column playback row. The canvas permits vertical page scrolling and pinch zoom. Render pixel density is capped at 2x and the canvas backing store is resized only when dimensions change.
 
 Validation covers mobile and desktop client initialization, control shortcuts, expand/escape behaviour, chance selection, shot jumping and pixel-density bounds in the client harness. HTML structure and unique IDs were checked. Browser/device visual testing was unavailable during this update; check portrait/landscape on a real phone after deployment. Railway configuration is unchanged.
+
+
+Playback labels use a 2x base rate: 0.5× plays tracking at its original 10 Hz, default 1× at 20 Hz, 2× at 40 Hz, and 4× at 80 Hz. Recorded timestamps and danger calculations remain tied to the original data time.

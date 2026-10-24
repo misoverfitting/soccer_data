@@ -16,6 +16,9 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
  const client=(await readFile(new URL('../public/client.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
  await vm.runInNewContext(`(async()=>{${client}\n})()`,sandbox);
+ assert.equal(element('chance').value,chances.find(c=>c.highDanger).id);
+ assert.equal(requests.filter(r=>r.includes('/clip?')).length,1);
+ assert.equal(element('jumpShot').hidden,false);
  assert.equal(element('meshControls').open,!mobile);assert.equal(element('chancePanel').hidden,false);assert.equal(element('clipDetails').hidden,true);
  element('showClipDetails').onclick();assert.equal(element('clipDetails').hidden,false);assert.equal(element('chancePanel').hidden,true);assert.equal(element('showClipDetails')['aria-expanded'],'true');
  element('showChances').onclick();assert.equal(element('chancePanel').hidden,false);assert.equal(element('clipDetails').hidden,true);

@@ -94,4 +94,10 @@ $('play').onclick=()=>{if(index>=frames.length-1)index=0;playing=!playing;last=p
 $('scrub').oninput=()=>{index=Number($('scrub').value);playing=false;$('play').textContent='▶ Play';draw();};
 for(const id of ['mode','team','colour','ball','ballOnly','detected'])$(id).onchange=()=>{selected=null;$('inspect').textContent=$('mode').value==='voronoi'?'Cells show proximity to each selected site; ball cells are neutral.':'Pause and click a triangle to inspect it.';draw();};
 function tick(now){if(playing&&frames.length){const dt=50/Number($('speed').value);if(now-last>=dt){index=Math.min(frames.length-1,index+Math.floor((now-last)/dt));last=now;draw();if(index===frames.length-1){playing=false;$('play').textContent='▶ Replay';}}}requestAnimationFrame(tick);}requestAnimationFrame(tick);window.addEventListener('resize',draw);
-await demo();centerInitialMobileMesh();try{const matches=await get('/api/matches');$('match').replaceChildren(...matches.map(m=>new Option(m.label,String(m.id))));$('match').value='1886347';await choose();}catch(e){say(`Demo available; match catalogue unavailable: ${e.message}`);}
+await demo();centerInitialMobileMesh();try{
+ const matches=await get('/api/matches');$('match').replaceChildren(...matches.map(m=>new Option(m.label,String(m.id))));$('match').value='1886347';
+ const startupToken=request+1;await choose();
+ // Do not override a selection the viewer made while startup was loading.
+ const first=request===startupToken&&pendingMeta?.id===1886347?chances.find(c=>c.highDanger):null;
+ if(first){$('chance').value=first.id;$('start').value=first.startFrame;await loadClip(first);}
+}catch(e){say(`Demo available; match catalogue unavailable: ${e.message}`);}

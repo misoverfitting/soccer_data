@@ -48,3 +48,9 @@ body.pitch-focus{overflow:hidden}
 #momentControls .control-body{padding-bottom:0}
 .pitch-actions>span{margin-right:auto}
 @media(max-width:500px){.pitch-actions{flex-wrap:wrap;gap:8px}.pitch-actions>span{flex-basis:100%}.pitch-actions button{flex:1;padding:10px 8px}.clip-panel{padding:12px}}
+
+/* Connect the active chance button visually to its selector panel. */
+.clip-actions:has(#showChances[aria-expanded="true"]){margin-bottom:32px}
+#showChances{position:relative}
+#showChances[aria-expanded="true"]::after{content:"";position:absolute;left:50%;top:calc(100% + 4px);width:2px;height:22px;background:#a6ead0;transform:translateX(-50%);pointer-events:none}
+#showChances[aria-expanded="true"]::before{content:"";position:absolute;left:50%;top:calc(100% + 19px);width:9px;height:9px;border-right:2px solid #a6ead0;border-bottom:2px solid #a6ead0;transform:translateX(-50%) rotate(45deg);pointer-events:none}

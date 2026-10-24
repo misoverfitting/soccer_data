@@ -2,6 +2,7 @@ import {buildDanger,dangerColour,teamScaleColour} from './danger.js';
 import {vertices,area,inside} from './geometry.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
 let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=null,transform,request=0;
+let chances=[],loadedChance=null;
 const say=s=>$('status').textContent=s;
 function centerInitialMobileMesh(){
  if(!frames.length||!window.matchMedia('(max-width: 900px)').matches)return;
@@ -11,7 +12,7 @@ function centerInitialMobileMesh(){
 }
 async function get(url){const r=await fetch(url);const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data;}
 function configure(m){meta=m;$('title').textContent=`${m.home_team.name} vs ${m.away_team.name}`;$('dimensions').textContent=`${m.pitch_length} × ${m.pitch_width} m`;$('team').replaceChildren(new Option('Both teams','all'),new Option(m.home_team.name,String(m.home_team.id)),new Option(m.away_team.name,String(m.away_team.id)));}
-function install(data){frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
+function install(data){loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
 async function demo(){const token=++request;try{const d=await get('/demo.json');if(token!==request)return;configure(d.metadata);install(d.frames);$('context').textContent='Bundled opening clip · real tracking · stadium orientation';say('Demo ready. Select a match and phase to explore another clip.');}catch(e){say(e.message);}}
 function teamColour(team){return teamScaleColour(team,meta,frames[index]?.period);}
 function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;canvas.width=Math.round(rect.width*dpr);canvas.height=Math.round(rect.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
@@ -30,14 +31,47 @@ function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingCli
  for(let e=0;e<3;e++){const p=vs[e],q=vs[(e+1)%3];const pt=new Set(p.members.filter(m=>m.id!=='ball').map(m=>m.team)),qt=new Set(q.members.filter(m=>m.id!=='ball').map(m=>m.team));const same=pt.size===1&&qt.size===1&&[...pt][0]=== [...qt][0];ctx.beginPath();ctx.moveTo(...px(p.x,p.y));ctx.lineTo(...px(q.x,q.y));ctx.globalAlpha=.95;ctx.strokeStyle=same?teamColour([...pt][0]):'#f4d292';ctx.lineWidth=same?2.5:1.8;ctx.setLineDash(same?[]:[5,3]);ctx.stroke();}ctx.setLineDash([]);}}
  ctx.restore();ctx.globalAlpha=1;ctx.setLineDash([]);ctx.strokeStyle='#6c9690';ctx.lineWidth=1;ctx.strokeRect(...px(-L/2,W/2),L*scale,W*scale);ctx.beginPath();ctx.moveTo(...px(0,-W/2));ctx.lineTo(...px(0,W/2));ctx.stroke();ctx.beginPath();ctx.arc(...px(0,0),9.15*scale,0,Math.PI*2);ctx.stroke();for(const side of [-1,1]){const x=side<0?-L/2:L/2-16.5;ctx.strokeRect(...px(x,20.16),16.5*scale,40.32*scale);const gx=side<0?-L/2:L/2-5.5;ctx.strokeRect(...px(gx,9.16),5.5*scale,18.32*scale);}
  vertices(f,meta,{team:$('team').value,ball:true,detectedOnly:$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');ctx.beginPath();ctx.arc(...px(p.x,p.y),ball?4.6:Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=ball?dangerColour(danger.current):teamColour(p.team);ctx.fill();ctx.strokeStyle=p.is_detected?'#102321':'#ffcc81';ctx.setLineDash(p.is_detected?[]:[2,2]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
+ $('jumpShot').hidden=!loadedChance;
+ if(loadedChance){const seconds=(f.frame-loadedChance.anchorFrame)/10;$('chanceStage').textContent=`${loadedChance.outcome==='goal'?'Confirmed goal':'Recorded shot'} at ${loadedChance.time} · ${seconds<0?Math.abs(seconds).toFixed(1)+' s before marker':seconds.toFixed(1)+' s after marker'} · ${loadedChance.team}`;}else $('chanceStage').textContent='';
  $('scrub').value=index;$('frame').textContent=f.frame;$('clock').textContent=(f.timestamp??'').replace(/^00:/,'');$('vertices').textContent=points.length;$('estimated').textContent=points.filter(p=>!p.is_detected).length;
  if(selected){const t=triangles.find(t=>t.key===selected);if(t){const edges=t.vs.map((p,i)=>{const q=t.vs[(i+1)%3];return Math.hypot(p.x-q.x,p.y-q.y).toFixed(1);});$('inspect').textContent=`${t.area.toFixed(1)} m² · potential danger ${t.potential==null?"unavailable":t.potential.toFixed(3)} · edges ${edges.join(' / ')} m · ${t.vs.flatMap(v=>v.members.map(p=>p.name+(p.is_detected?'':' (estimated)'))).join(' ↔ ')}${t.ball?' · ball-adjacent':''}.`; }else $('inspect').textContent='Selected triangle is no longer present in this frame.';}
 }
 canvas.addEventListener('click',e=>{if(!transform||$('mode').value!=='triangles')return;const r=canvas.getBoundingClientRect();const p={x:(e.clientX-r.left-transform.ox)/transform.scale,y:-(e.clientY-r.top-transform.oy)/transform.scale};if(Math.abs(p.x)>meta.pitch_length/2||Math.abs(p.y)>meta.pitch_width/2)return;selected=triangles.find(t=>inside(p,...t.vs))?.key??null;draw();});
-async function choose(){const token=++request;playing=false;$('play').textContent='▶ Play';say('Reading match metadata and phases…');try{const id=$('match').value;const [m,p]=await Promise.all([get(`/api/matches/${id}/metadata`),get(`/api/matches/${id}/phases`)]);if(token!==request)return;phases=p;$('phase').replaceChildren(new Option('Opening clip',''));for(let i=0;i<p.length;i++){const x=p[i];$('phase').add(new Option(`P${x.period} ${x.time_start} · ${x.team_in_possession_phase_type} / ${x.team_out_of_possession_phase_type}`,String(i)));}$('start').value=10;say('Match selected. Click Load tracking clip.');pendingMeta=m;}catch(e){say(e.message);}}
+function chanceLabel(c){return `${c.outcome==='goal'?'GOAL':'SHOT'} · P${c.period} ${c.time} · ${c.team} · ${c.player??'goal marker'} · peak EPV ${c.peakEpv==null?'unavailable':c.peakEpv.toFixed(3)}`;}
+function fillChances(){
+ const filter=$('chanceFilter').value;
+ const shown=chances.filter(c=>filter==='all'||filter==='goals'&&c.outcome==='goal'||filter==='high'&&c.highDanger);
+ $('chance').replaceChildren(new Option(`Select a chance (${shown.length} available)…`,''),...shown.map(c=>new Option(chanceLabel(c),c.id)));
+ $('chanceInfo').textContent=`${shown.length} clips · 20 s build-up + 8 s aftermath, bounded to the half. High = recorded attacking EPV ≥ 0.10 or a confirmed goal; this is not shot xG. Selecting loads the clip.`;
+}
+async function choose(){
+ const token=++request;playing=false;$('play').textContent='▶ Play';$('chance').disabled=true;$('load').disabled=true;pendingMeta=null;
+ say('Reading match metadata, phases and pre-identified chances…');
+ try{const id=$('match').value;const [m,p,c]=await Promise.all([get(`/api/matches/${id}/metadata`),get(`/api/matches/${id}/phases`),get(`/api/matches/${id}/chances`)]);
+ if(token!==request)return;phases=p;chances=c.chances;fillChances();$('phase').replaceChildren(new Option('Opening clip',''));
+ for(let i=0;i<p.length;i++){const x=p[i];$('phase').add(new Option(`P${x.period} ${x.time_start} · ${x.team_in_possession_phase_type} / ${x.team_out_of_possession_phase_type}`,String(i)));}
+ $('start').value=10;say('Select a danger chance, or load a custom tracking clip.');pendingMeta=m;
+ }catch(e){if(token===request)say(e.message);}finally{if(token===request){$('chance').disabled=false;$('load').disabled=false;}}
+}
 let pendingMeta;
-$('phase').onchange=()=>{const p=phases[$('phase').value];$('start').value=p?.frame_start??10;};
-$('load').onclick=async()=>{const token=++request;const id=$('match').value;playing=false;$('play').textContent='▶ Play';$('load').disabled=true;say('Streaming real tracking data… later clips may take up to 90 seconds.');try{const m=(pendingMeta?.id===Number(id)?pendingMeta:null)??await get(`/api/matches/${id}/metadata`);const data=await get(`/api/matches/${id}/clip?start=${encodeURIComponent($('start').value)}&count=${Number($('duration').value)*10}`);if(token!==request)return;configure(m);install(data);$('context').textContent=`Match ${id} · ${$('phase').selectedOptions[0]?.textContent??'Custom clip'} · stadium orientation`;say(`Ready · ${data.length} frames. Dashed marks indicate estimates.`);}catch(e){if(token===request)say(e.message);}finally{$('load').disabled=false;}};
+$('chanceFilter').onchange=fillChances;
+$('phase').onchange=()=>{$('chance').value='';const p=phases[$('phase').value];$('start').value=p?.frame_start??10;};
+$('start').oninput=()=>$('chance').value='';$('duration').onchange=()=>$('chance').value='';
+async function loadClip(chance=null){
+ const token=++request,id=$('match').value;playing=false;$('play').textContent='▶ Play';$('load').disabled=true;
+ say('Streaming real tracking data… later clips may take up to 90 seconds.');
+ try{const m=(pendingMeta?.id===Number(id)?pendingMeta:null)??await get(`/api/matches/${id}/metadata`);
+ const query=chance?`start=${chance.startFrame}&count=${chance.count}&end=${chance.endFrame}&period=${chance.period}`:`start=${encodeURIComponent($('start').value)}&count=${Number($('duration').value)*10}`;
+ const data=await get(`/api/matches/${id}/clip?${query}`);if(token!==request)return;configure(m);install(data);loadedChance=chance;
+ $('context').textContent=chance?chanceLabel(chance):`Match ${id} · ${$('phase').selectedOptions[0]?.textContent??'Custom clip'} · stadium orientation`;
+ draw();
+ if(chance){const covers=data[0].frame<=chance.anchorFrame&&data.at(-1).frame>=chance.anchorFrame;const exact=data.some(f=>f.frame===chance.anchorFrame);say(covers?`Chance ready · ${data.length} frames${exact?'':' · exact outcome frame missing; surrounding tracking shown'}.`:'Tracking does not cover the outcome marker for this chance.');canvas.scrollIntoView({block:'center',behavior:'smooth'});}
+ else say(`Ready · ${data.length} frames. Dashed marks indicate estimates.`);
+ }catch(e){if(token===request)say(e.message);}finally{if(token===request)$('load').disabled=false;}
+}
+$('load').onclick=()=>loadClip(chances.find(c=>c.id===$('chance').value)??null);
+$('chance').onchange=()=>{const c=chances.find(c=>c.id===$('chance').value);if(c){$('start').value=c.startFrame;$('phase').value='';return loadClip(c);}};
+$('jumpShot').onclick=()=>{if(!loadedChance)return;index=frames.reduce((best,f,i)=>Math.abs(f.frame-loadedChance.anchorFrame)<Math.abs(frames[best].frame-loadedChance.anchorFrame)?i:best,0);playing=false;$('play').textContent='▶ Play';draw();};
 $('match').onchange=choose;$('demo').onclick=demo;
 $('play').onclick=()=>{if(index>=frames.length-1)index=0;playing=!playing;last=performance.now();$('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();};
 $('scrub').oninput=()=>{index=Number($('scrub').value);playing=false;$('play').textContent='▶ Play';draw();};

@@ -37,7 +37,7 @@ Thick solid mint/blue edges join teammates; amber dashed edges join different te
 - Voronoi is proximity territory, not a predictive pitch-control model. Ball inclusion applies to both geometry modes. Team-only meshes are separate views, not additive territory shares.
 - The inspector tracks a triangle by its member identities while scrubbing. Delaunay edge changes can remove a selected triangle. Geometry measurements do not assert pass feasibility or possession value.
 - Clip requests are bounded to 600 frames and 90 seconds upstream timeout. An eight-clip in-memory cache resets when the service restarts. This is a small-team research app, without authentication or durable storage. Public services permit public access; use Railway/private-network or an external access gateway if you need restricted access.
-- Event-specific selections and EPV overlays are future work; this version supports phase selection and custom start frames. No body-pose processing is required.
+- Pre-identified shot/goal selections, phase selection and custom start frames are supported. No body-pose processing is required.
 - Library: vendored d3-delaunay 6.0.4, ISC license in `app/public/D3-LICENSE.txt`. Tracking data: SkillCorner Open Data / PySport, repository MIT license. Credit SkillCorner in shared results.
 
 ## Troubleshooting
@@ -46,3 +46,20 @@ Thick solid mint/blue edges join teammates; amber dashed edges join different te
 - Build tries Python: ensure repository root and Dockerfile builder are selected; do not use the tutorial `requirements.txt` for this app.
 - Additional clip fails: use the bundled demo, check outbound GitHub availability and retry a shorter/earlier clip. No SkillCorner API account is needed.
 - Railway connection permissions: ensure its GitHub integration can access this repository and branch.
+
+
+## Pre-identified danger chances
+
+Choose a match, then select **Danger chances**. Selection automatically loads the build-up and outcome; no frame entry is necessary. Use **Chance filter** to show high-EPV chances plus goals (default), confirmed goals only, or all recorded shots/goals. Press Play to watch from the build-up, or **Jump to shot / goal marker** to inspect the anchor. The marker countdown beneath playback uses frame time and updates during scrubbing.
+
+The checked-in `app/chance-catalogue.json` contains 528 clips across all 20 matches, including 264 high-EPV/goal clips and 64 confirmed goals. Each clip is bounded to the current period and spans up to 20 seconds before and 8 seconds after the anchor. Manual frame and phase loading remain available. A missing tracking interval cannot be reconstructed; the app reports if the exact outcome frame or its coverage is missing.
+
+Selection is retrospective: actual `player_possession.end_type == shot` anchors shots. Explicit `goal_for`/`goal_against` interruption markers confirm goals and are combined with the corresponding shot where possible. Earlier `lead_to_goal` actions are not counted as separate goals. A shot without a confirmed goal marker is labelled SHOT, not saved/missed, because the data does not specify a full shot result taxonomy. Separate close shots, including rebounds, remain separate entries, so their build-up windows can overlap.
+
+Ranking uses the maximum available provider attacking EPV at possession start/end or pass reception for that team in the 20-second window ending at the anchor. High-EPV means >= 0.10; explicitly recorded goals are always included. This is a selection threshold, not an xG threshold or a guarantee of a high probability of scoring. Missing EPV is displayed as unavailable and remains discoverable under All recorded shots/goals. The live danger overlay remains the separate spatial proxy documented above.
+
+The event annotations are incomplete in places: match 1886347's metadata reports 2–0 but its events explicitly confirm only one goal. The selector cannot recover an unannotated goal from the final score alone. No new goal labels are inferred from the spatial danger model.
+
+To rebuild after changing source event data, run `node app/scripts/build-chances.mjs`, review the resulting JSON and commit it. Railway reads the precomputed catalogue at startup; it does not scan 100 MB of CSVs to discover chances on each request. Existing Dockerfile and Railway settings continue to work. The clip API now accepts optional `end` and `period` bounds to avoid bleeding through gaps into another half.
+
+Validation: automated catalogue checks cover all 20 matches and all recorded shot anchors; client harness covers selection, exact API parameters, countdown and jump-to-shot; HTTP tests cover phase bounds and gaps. A real goal clip for match 1886347 was retrieved successfully at frames 50399–50679 including goal marker 50599. Interactive browser visual verification was unavailable in this session.

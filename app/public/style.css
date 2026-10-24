@@ -43,3 +43,8 @@ body.pitch-focus{overflow:hidden}
 }
 @media(max-width:380px){.scorebar{flex-wrap:wrap}#clock{margin-left:auto}.mobile-tools button{font-size:14px}.transport{gap:6px;grid-template-columns:76px minmax(0,1fr) 65px;padding:6px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+.clip-actions{display:flex;gap:10px;margin:12px 0}.clip-actions button{flex:1;margin:0;min-height:44px}
+.clip-panel{padding:14px;border:1px solid #34474f;background:#142128;border-radius:10px}
+#momentControls .control-body{padding-bottom:0}
+.pitch-actions>span{margin-right:auto}
+@media(max-width:500px){.pitch-actions{flex-wrap:wrap;gap:8px}.pitch-actions>span{flex-basis:100%}.pitch-actions button{flex:1;padding:10px 8px}.clip-panel{padding:12px}}

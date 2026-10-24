@@ -5,11 +5,18 @@ let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=
 let chances=[],loadedChance=null;
 const say=s=>{$('status').textContent=s;$('viewerStatus').textContent=s;};
 const mobileLayout=window.matchMedia('(max-width: 900px)');
-function setControlLayout(){for(const id of ['momentControls','meshControls'])$(id).open=!mobileLayout.matches;}
+function setControlLayout(){$('meshControls').open=!mobileLayout.matches;}
 setControlLayout();
 mobileLayout.addEventListener?.('change',()=>{setControlLayout();requestAnimationFrame(draw);});
 function showControls(id){$(id).open=true;$(id).scrollIntoView({block:'start',behavior:'smooth'});}
-$('showChances').onclick=()=>showControls('momentControls');
+function showClipPanel(which){
+ const chance=which==='chance';$('chancePanel').hidden=!chance;$('clipDetails').hidden=chance;
+ $('showChances').setAttribute('aria-expanded',String(chance));$('showClipDetails').setAttribute('aria-expanded',String(!chance));
+ $('showChances').classList.toggle('secondary',!chance);$('showClipDetails').classList.toggle('secondary',chance);
+}
+$('showChances').onclick=()=>showClipPanel('chance');
+$('showClipDetails').onclick=()=>showClipPanel('details');
+showClipPanel('chance');
 $('showMesh').onclick=()=>showControls('meshControls');
 function leaveFocus(){document.body.classList.remove('pitch-focus');$('focusPitch').textContent='Expand pitch';$('focusPitch').setAttribute('aria-pressed','false');requestAnimationFrame(draw);}
 $('focusPitch').onclick=()=>{if(document.body.classList.contains('pitch-focus')){leaveFocus();return;}document.body.classList.add('pitch-focus');$('focusPitch').textContent='Exit expanded view';$('focusPitch').setAttribute('aria-pressed','true');requestAnimationFrame(draw);};

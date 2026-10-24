@@ -18,6 +18,8 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  await vm.runInNewContext(`(async()=>{${client}\n})()`,sandbox);
  assert.equal(element('chance').value,chances.find(c=>c.highDanger).id);
  assert.equal(requests.filter(r=>r.includes('/clip?')).length,1);
+ assert.equal(requests.includes('/demo.json'),false,'default startup must not fetch or render the old demo');
+ assert.equal(element('startupLoading').hidden,true);
  assert.equal(element('jumpShot').hidden,false);
  assert.equal(element('meshControls').open,!mobile);assert.equal(element('chancePanel').hidden,false);assert.equal(element('clipDetails').hidden,true);
  element('showClipDetails').onclick();assert.equal(element('clipDetails').hidden,false);assert.equal(element('chancePanel').hidden,true);assert.equal(element('showClipDetails')['aria-expanded'],'true');

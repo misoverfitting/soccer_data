@@ -9,7 +9,7 @@ Branch: `codex/pitch-tiling-railway`, based on `master` at `4340d274572876239c15
 3. Railway should detect the root `Dockerfile` and `railway.json`. Build with Dockerfile; start command is `node app/server.mjs`; health check is `/health`.
 4. No credentials, database, volume or environment variables are required. Railway supplies `PORT`; the app binds it on `0.0.0.0`. Node 22 is included in the image.
 5. After deployment succeeds, use Settings → Networking → Generate Domain and open the public HTTPS URL.
-6. The bundled Auckland–Newcastle clip should immediately appear. Press Play, scrub the timeline, pause and click a triangle. Toggle ball inclusion, detected-only and Voronoi modes.
+6. A loading state appears while the first catalogued high-danger chance for Auckland–Newcastle is fetched; no demo is rendered first. Press Play, scrub the timeline, pause and click a triangle. Toggle ball inclusion, detected-only and Voronoi modes.
 7. Select a match and phase, then **Load tracking clip**. This reads up to 60 seconds from public GitHub LFS media; later-match positions require scanning more of the remote stream. The status message reports loading/error states. Outbound HTTPS access to `media.githubusercontent.com` is needed for additional clips, not for the demo.
 
 ## Local operation
@@ -75,3 +75,6 @@ Validation covers mobile and desktop client initialization, control shortcuts, e
 
 
 Playback labels use a 2x base rate: 0.5× plays tracking at its original 10 Hz, default 1× at 20 Hz, 2× at 40 Hz, and 4× at 80 Hz. Recorded timestamps and danger calculations remain tied to the original data time.
+
+
+Startup loads the default high-danger clip directly. Playback is disabled while loading; the bundled demo is fetched only if default startup fails or the user explicitly requests it.

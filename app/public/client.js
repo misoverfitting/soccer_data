@@ -29,7 +29,7 @@ function centerInitialMobileMesh(){
 }
 async function get(url){const r=await fetch(url);const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data;}
 function configure(m){meta=m;$('title').textContent=`${m.home_team.name} vs ${m.away_team.name}`;$('dimensions').textContent=`${m.pitch_length} × ${m.pitch_width} m`;$('team').replaceChildren(new Option('Both teams','all'),new Option(m.home_team.name,String(m.home_team.id)),new Option(m.away_team.name,String(m.away_team.id)));}
-function install(data){loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
+function install(data){$('startupLoading').hidden=true;$('play').disabled=false;$('scrub').disabled=false;loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
 async function demo(){const token=++request;try{const d=await get('/demo.json');if(token!==request)return;configure(d.metadata);install(d.frames);$('context').textContent='Bundled opening clip · real tracking · stadium orientation';say('Demo ready. Select a match and phase to explore another clip.');}catch(e){say(e.message);}}
 function teamColour(team){return teamScaleColour(team,meta,frames[index]?.period);}
 function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
@@ -84,7 +84,8 @@ async function loadClip(chance=null){
  draw();
  if(chance){const covers=data[0].frame<=chance.anchorFrame&&data.at(-1).frame>=chance.anchorFrame;const exact=data.some(f=>f.frame===chance.anchorFrame);say(covers?`Chance ready · ${data.length} frames${exact?'':' · exact outcome frame missing; surrounding tracking shown'}.`:'Tracking does not cover the outcome marker for this chance.');canvas.scrollIntoView({block:'center',behavior:'smooth'});}
  else say(`Ready · ${data.length} frames. Dashed marks indicate estimates.`);
- }catch(e){if(token===request)say(e.message);}finally{if(token===request)$('load').disabled=false;}
+ return true;
+ }catch(e){if(token===request){say(e.message);return false;}}finally{if(token===request)$('load').disabled=false;}
 }
 $('load').onclick=()=>loadClip(chances.find(c=>c.id===$('chance').value)??null);
 $('chance').onchange=()=>{const c=chances.find(c=>c.id===$('chance').value);if(c){$('start').value=c.startFrame;$('phase').value='';return loadClip(c);}};
@@ -94,10 +95,24 @@ $('play').onclick=()=>{if(index>=frames.length-1)index=0;playing=!playing;last=p
 $('scrub').oninput=()=>{index=Number($('scrub').value);playing=false;$('play').textContent='▶ Play';draw();};
 for(const id of ['mode','team','colour','ball','ballOnly','detected'])$(id).onchange=()=>{selected=null;$('inspect').textContent=$('mode').value==='voronoi'?'Cells show proximity to each selected site; ball cells are neutral.':'Pause and click a triangle to inspect it.';draw();};
 function tick(now){if(playing&&frames.length){const dt=50/Number($('speed').value);if(now-last>=dt){index=Math.min(frames.length-1,index+Math.floor((now-last)/dt));last=now;draw();if(index===frames.length-1){playing=false;$('play').textContent='▶ Replay';}}}requestAnimationFrame(tick);}requestAnimationFrame(tick);window.addEventListener('resize',draw);
-await demo();centerInitialMobileMesh();try{
- const matches=await get('/api/matches');$('match').replaceChildren(...matches.map(m=>new Option(m.label,String(m.id))));$('match').value='1886347';
- const startupToken=request+1;await choose();
- // Do not override a selection the viewer made while startup was loading.
- const first=request===startupToken&&pendingMeta?.id===1886347?chances.find(c=>c.highDanger):null;
- if(first){$('chance').value=first.id;$('start').value=first.startFrame;await loadClip(first);}
-}catch(e){say(`Demo available; match catalogue unavailable: ${e.message}`);}
+async function startup(){
+ let expected=++request;
+ say('Loading the default high-danger chance…');
+ try{
+  const matches=await get('/api/matches');if(request!==expected)return;
+  $('match').replaceChildren(...matches.map(m=>new Option(m.label,String(m.id))));$('match').value='1886347';
+  expected=request+1;await choose();if(request!==expected)return;
+  const first=pendingMeta?.id===1886347?chances.find(c=>c.highDanger):null;
+  if(!first)throw Error('No default high-danger chance available.');
+  $('chance').value=first.id;$('start').value=first.startFrame;
+  expected=request+1;const loaded=await loadClip(first);if(request!==expected)return;
+  if(!loaded)throw Error('The default chance could not be loaded.');
+  centerInitialMobileMesh();
+ }catch(e){
+  if(request!==expected)return;
+  await demo();centerInitialMobileMesh();
+  if(frames.length)say(`${e.message} Showing the bundled fallback clip.`);
+  else $('startupLoading').textContent='Unable to load tracking. Please try Return to bundled demo.';
+ }
+}
+await startup();

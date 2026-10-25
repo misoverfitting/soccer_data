@@ -91,3 +91,10 @@ Each triangle is sampled at its centroid and three interior points toward its ve
 The model uses all available players independently of mesh team/detection filters, with estimated-position warnings retained. It requires a known possession team, a ball carrier within 3 m, a non-airborne ball (z <= 1.5 m when present) and at least one tracked opponent. Otherwise it reports why the index is unavailable. The model does not include multi-pass combinations, curved/chipped passes, dribbling skill, individual acceleration or offside legality; a physically reachable pass is not automatically a tactically valid option. Missing defenders can make the index optimistic.
 
 Validation checks include clear versus intercepted passing lanes, receiver readiness, short/contested carries, bounded scores, existing ball occupancy and unavailable states. Railway deployment configuration is unchanged.
+
+
+## Short possession gaps
+
+During 1–9 consecutive source frames without labelled possession, the ball danger and access/potential-danger calculations use the last known-possession frame and its geometry. Markers and mesh continue moving; existing vertex combinations retain their held scores. The legend and inspector explicitly say **held during transit**. At the 10th no-possession frame the metrics become unavailable. New possession resumes live calculation immediately. The grace period uses original 10 Hz frame numbers, not playback speed, and cannot cross missing recording frames, period boundaries or clip boundaries. Scrubbing produces the same result as forward playback; no future frames are used. If no prior possession is available in the clip, no estimate is invented. Other missing-input conditions still make the underlying metric unavailable.
+
+Solid blue/red connections identify teammates; amber dashed connections identify different teams or ball connections. Small amber dashed rings around player markers are tracking-quality indicators for extrapolated/off-camera positions, not tactical pressure or possession.

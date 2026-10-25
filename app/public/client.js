@@ -22,7 +22,7 @@ showClipPanel('chance');
 $('showMesh').onclick=()=>showControls('meshControls');
 function leaveFocus(){document.body.classList.remove('pitch-focus');$('focusPitch').textContent='Expand pitch';$('focusPitch').setAttribute('aria-pressed','false');requestAnimationFrame(draw);}
 $('focusPitch').onclick=()=>{if(document.body.classList.contains('pitch-focus')){leaveFocus();return;}document.body.classList.add('pitch-focus');$('focusPitch').textContent='Exit expanded view';$('focusPitch').setAttribute('aria-pressed','true');requestAnimationFrame(draw);};
-window.addEventListener('keydown',e=>{if(e.key==='Escape')leaveFocus();});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('tileFeedback').open)leaveFocus();});
 function centerInitialMobileMesh(){
  if(!frames.length||!window.matchMedia('(max-width: 900px)').matches)return;
  // Wait for the initial frame to paint; do this only at startup so later
@@ -82,7 +82,9 @@ function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingCli
  if(loadedChance){const seconds=(f.frame-loadedChance.anchorFrame)/10;$('chanceStage').textContent=`${loadedChance.outcome==='goal'?'Confirmed goal':'Recorded shot'} at ${loadedChance.time} · ${seconds<0?Math.abs(seconds).toFixed(1)+' s before marker':seconds.toFixed(1)+' s after marker'} · ${loadedChance.team}`;}else $('chanceStage').textContent='';
  $('scrub').value=index;$('frame').textContent=f.frame;$('clock').textContent=(f.timestamp??'').replace(/^00:/,'');$('vertices').textContent=points.length;$('estimated').textContent=points.filter(p=>!p.is_detected).length;
  if(selected){const t=triangles.find(t=>t.key===selected);if(t){const edges=t.vs.map((p,i)=>{const q=t.vs[(i+1)%3];return Math.hypot(p.x-q.x,p.y-q.y).toFixed(1);});$('inspect').textContent=`${t.area.toFixed(1)} m²${holdLabel} · ball access ${t.entry.score==null?t.entry.reason:Math.round(t.entry.score*100)+"/100 via "+t.entry.route+(t.entry.seconds?" (~"+t.entry.seconds.toFixed(1)+" s)":"")} · pass ${t.entry.pass==null?"—":Math.round(t.entry.pass*100)+"/100"} · carry ${t.entry.carry==null?"—":Math.round(t.entry.carry*100)+"/100"} · potential danger ${t.potential==null?"unavailable":t.potential.toFixed(3)} · edges ${edges.join(' / ')} m · ${t.vs.flatMap(v=>v.members.map(p=>p.name+(p.is_detected?'':' (estimated)'))).join(' ↔ ')}${t.ball?' · ball-adjacent':''}.`; }else $('inspect').textContent='Selected triangle is no longer present in this frame.';}
- $('tileFeedback').hidden=!selected;if(selected)$('tileSummary').textContent=$('inspect').textContent;
+ const popup=$('tileFeedback');
+ if(selected){$('tileSummary').textContent=$('inspect').textContent;popup.hidden=false;if(!popup.open)popup.showModal();}
+ else{if(popup.open)popup.close();popup.hidden=true;}
 }
 function selectTriangle(clientX,clientY){
  if(!transform||$('mode').value!=='triangles')return;
@@ -97,7 +99,10 @@ canvas.addEventListener('pointermove',e=>{if(touchTap?.id===e.pointerId&&Math.hy
 canvas.addEventListener('pointercancel',()=>touchTap=null);
 canvas.addEventListener('pointerup',e=>{if(touchTap?.id!==e.pointerId)return;const tap=touchTap;touchTap=null;if(Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>10)return;lastTouchSelection=performance.now();selectTriangle(e.clientX,e.clientY);});
 canvas.addEventListener('click',e=>{if(performance.now()-lastTouchSelection<600)return;selectTriangle(e.clientX,e.clientY);});
-$('clearTile').onclick=()=>{selected=null;draw();};
+function closeTile(){selected=null;draw();}
+$('clearTile').onclick=closeTile;
+$('tileFeedback').addEventListener('cancel',e=>{e.preventDefault();closeTile();});
+$('tileFeedback').addEventListener('click',e=>{if(e.target!==$('tileFeedback'))return;const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeTile();});
 
 function chanceLabel(c){return `${c.outcome==='goal'?'GOAL':'SHOT'} · P${c.period} ${c.time} · ${c.team} · ${c.player??'goal marker'} · peak EPV ${c.peakEpv==null?'unavailable':c.peakEpv.toFixed(3)}`;}
 function fillChances(){

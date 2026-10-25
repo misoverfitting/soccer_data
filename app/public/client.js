@@ -1,5 +1,5 @@
 import {buildAccess,accessColour} from './access.js';
-import {possessionSource} from './possession.js';
+import {possessionSource,POSSESSION_HOLD_FRAMES} from './possession.js';
 import {buildDanger,dangerColour,teamScaleColour} from './danger.js';
 import {vertices,area,inside} from './geometry.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
@@ -58,7 +58,7 @@ function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingCli
  // Hold scores at their last known geometry while player/ball markers keep moving.
  const heldSites=new Map(source.heldFrames?vertices(calculationFrame,meta,{ball:true}).flatMap(p=>p.members.map(m=>[m.id,p])):[]);
  const scoringSite=p=>source.heldFrames?heldSites.get(p.id)??p:p;
- const holdLabel=source.heldFrames?` · held during transit (${source.heldFrames}/10 frames)` : '';
+ const holdLabel=source.heldFrames?` · held during transit (${source.heldFrames}/${POSSESSION_HOLD_FRAMES} frames)` : '';
  $('danger').textContent=danger.current==null?'Unavailable':danger.current.toFixed(3);
  $('dangerTeams').textContent=danger.left?('−1 Blue: '+danger.left.name+' (attacks →) | +1 Red: '+danger.right.name+' (attacks ←)'):'Attacking directions unavailable';
  $('teamLegend').textContent=danger.left?('● Blue: '+danger.left.name+' · ● Red: '+danger.right.name):'Team directions unavailable';

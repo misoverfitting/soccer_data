@@ -12,7 +12,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  const chances=catalogue.matches['1886347'];
  const requests=[],els=new Map(),classes=new Set(),events=new Map();
  const context2d=new Proxy({},{get:()=>()=>{}});
- const element=id=>{if(!els.has(id)){const e={id,classList:{toggle(){}},value:({team:'all',colour:'danger',duration:'30',speed:'1',chanceFilter:'high',start:'10'})[id]??'',checked:id==='ball',options:[],textContent:'',hidden:false,disabled:false,addEventListener(){},getBoundingClientRect(){return mobile?{width:390,height:260}:{width:1000,height:625};},getContext(){return context2d;},scrollIntoView(){this.scrolled=true;},setAttribute(k,v){this[k]=v;},add(o){this.options.push(o);},replaceChildren(...options){this.options=options;this.value=options[0]?.value??'';}};Object.defineProperty(e,'selectedOptions',{get:()=>e.options.filter(o=>o.value===e.value)});els.set(id,e);}return els.get(id);};
+ const element=id=>{if(!els.has(id)){const e={id,listeners:new Map(),classList:{toggle(){}},value:({mode:'triangles',team:'all',colour:'danger',duration:'30',speed:'1',chanceFilter:'high',start:'10'})[id]??'',checked:id==='ball',options:[],textContent:'',hidden:false,disabled:false,addEventListener(k,fn){this.listeners.set(k,fn);},getBoundingClientRect(){return mobile?{width:390,height:260,left:0,top:0}:{width:1000,height:625,left:0,top:0};},getContext(){return context2d;},scrollIntoView(){this.scrolled=true;},setAttribute(k,v){this[k]=v;},add(o){this.options.push(o);},replaceChildren(...options){this.options=options;this.value=options[0]?.value??'';}};Object.defineProperty(e,'selectedOptions',{get:()=>e.options.filter(o=>o.value===e.value)});els.set(id,e);}return els.get(id);};
  const sandbox={...geometry,...danger,...access,...possession,devicePixelRatio:3,performance:{now:()=>0},requestAnimationFrame(){},window:{matchMedia:()=>({matches:mobile}),addEventListener(k,fn){events.set(k,fn);}},document:{getElementById:element,body:{classList:{contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k)}}},Option:class{constructor(text,value){this.textContent=text;this.value=value;}},fetch:async url=>{
  requests.push(url);let data;if(url==='/demo.json')data=demo;else if(url==='/api/matches')data=[{id:1886347,label:'Test match'}];else if(url.endsWith('/metadata'))data=demo.metadata;else if(url.endsWith('/phases'))data=[];else if(url.endsWith('/chances'))data={chances};else if(url.includes('/clip?')){const u=new URL(url,'http://test'),start=Number(u.searchParams.get('start'));data=demo.frames.slice(0,281).map((f,i)=>({...f,frame:start+i,period:2}));}else throw Error(url);return {ok:true,json:async()=>data};}};
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
@@ -30,6 +30,15 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('focusPitch').onclick();assert.equal(classes.has('pitch-focus'),true);assert.equal(element('focusPitch')['aria-pressed'],'true');
  events.get('keydown')({key:'Escape'});assert.equal(classes.has('pitch-focus'),false);assert.equal(element('focusPitch')['aria-pressed'],'false');
  assert.equal(element('pitch').width,mobile?780:2000);
+ const points=geometry.vertices(demo.frames[0],demo.metadata,{ball:true}),mesh=sandbox.d3.Delaunay.from(points,p=>p.x,p=>p.y);
+ const triangle=Array.from(mesh.triangles.slice(0,3),i=>points[i]),rect=element('pitch').getBoundingClientRect(),scale=Math.min((rect.width-48)/104,(rect.height-40)/68);
+ const tap={clientX:rect.width/2+triangle.reduce((s,p)=>s+p.x,0)/3*scale,clientY:rect.height/2-triangle.reduce((s,p)=>s+p.y,0)/3*scale,pointerId:1,pointerType:'touch',isPrimary:true};
+ const listeners=element('pitch').listeners;
+ if(mobile){listeners.get('pointerdown')(tap);listeners.get('pointerup')(tap);}else listeners.get('click')(tap);
+ assert.equal(element('tileFeedback').hidden,false);assert.match(element('tileSummary').textContent,/m²/);assert.equal(element('play').textContent,'▶ Play');
+ element('clearTile').onclick();assert.equal(element('tileFeedback').hidden,true);
+ listeners.get('pointerdown')(tap);listeners.get('pointermove')({...tap,clientY:tap.clientY+40});listeners.get('pointerup')({...tap,clientY:tap.clientY+40});assert.equal(element('tileFeedback').hidden,true,'scroll gesture must not select a triangle');
+
  assert.equal(element('chance').options.length,1+chances.filter(c=>c.highDanger).length);
  const goal=chances.find(c=>c.outcome==='goal');element('chance').value=goal.id;await element('chance').onchange();
  const req=requests.find(r=>r.includes('/clip?'));assert.ok(req.includes(`end=${goal.endFrame}`));assert.ok(req.includes('period=2'));assert.equal(element('jumpShot').hidden,false);assert.match(element('chanceStage').textContent,/20.0 s before/);

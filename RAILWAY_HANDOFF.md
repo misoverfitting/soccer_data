@@ -78,3 +78,16 @@ Playback labels use a 2x base rate: 0.5× plays tracking at its original 10 Hz, 
 
 
 Startup loads the default high-danger clip directly. Playback is disabled while loading; the bundled demo is fetched only if default startup fails or the user explicitly requests it.
+
+
+## Ball access metric
+
+Select **Mesh & colour settings → Colour triangles by → Ball access · hard → easy**. It updates each tracking frame. Red means hard to reach, green easy; grey means unavailable. Potential danger remains the default colouring. The ball still uses the separate danger score.
+
+Ball access is a 0–100 direct-route accessibility index over the next 5 seconds, not a pass-completion or possession probability. It compares a ground pass and a straight carry. A pass uses 15 m/s ball speed plus 0.2 s release time, six interception samples along the route, and a teammate's predicted readiness at the destination. Carries use 4 m/s, six route samples and opposing arrival margins. Player arrival estimates use 0.25 s reaction, 6 m/s travel and previous-frame velocity capped at 9 m/s. Shorter delivery time is favoured. All constants are research defaults, not fitted parameters.
+
+Each triangle is sampled at its centroid and three interior points toward its vertices. The tile receives the best direct-route score among those points. This answers whether there is an accessible entry into the tile, not whether its whole area is controlled. Tiles containing the ball score 100 and say **already here**, rather than claiming a successful new action. The inspector shows the best route, estimated route time, and separate pass/carry scores at the selected entry point. Voronoi mode samples at each seed instead of evaluating a whole region.
+
+The model uses all available players independently of mesh team/detection filters, with estimated-position warnings retained. It requires a known possession team, a ball carrier within 3 m, a non-airborne ball (z <= 1.5 m when present) and at least one tracked opponent. Otherwise it reports why the index is unavailable. The model does not include multi-pass combinations, curved/chipped passes, dribbling skill, individual acceleration or offside legality; a physically reachable pass is not automatically a tactically valid option. Missing defenders can make the index optimistic.
+
+Validation checks include clear versus intercepted passing lanes, receiver readiness, short/contested carries, bounded scores, existing ball occupancy and unavailable states. Railway deployment configuration is unchanged.

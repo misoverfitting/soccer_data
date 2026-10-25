@@ -101,3 +101,6 @@ Solid blue/red connections identify teammates; amber dashed connections identify
 
 
 Triangle selection accepts touch/pen taps via pointer events and mouse clicks. A tap pauses playback, outlines the selected triangle above the team edges, and reveals an inline inspector beneath playback (or overlaid inside the expanded view). Clear dismisses it. Pointer cancellation, multi-touch and movements over 10 CSS pixels are ignored so page scrolling does not select tiles. Client tests exercise hit-testing at mobile and desktop sizes, inline feedback, clearing and scroll-gesture rejection; real-device browser verification remains unavailable.
+
+
+The triangle inspector is now a compact non-modal popover positioned above the selected triangle centroid and constrained to viewport edges. Area, Ball access and potential danger have separate readouts, with route, player and edge details below. Playback closes it; selecting another triangle replaces its contents and anchor. Close, Escape or tapping outside dismisses it. The background remains interactive, including in expanded pitch view.

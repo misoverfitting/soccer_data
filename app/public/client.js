@@ -22,7 +22,7 @@ showClipPanel('chance');
 $('showMesh').onclick=()=>showControls('meshControls');
 function leaveFocus(){document.body.classList.remove('pitch-focus');$('focusPitch').textContent='Expand pitch';$('focusPitch').setAttribute('aria-pressed','false');requestAnimationFrame(draw);}
 $('focusPitch').onclick=()=>{if(document.body.classList.contains('pitch-focus')){leaveFocus();return;}document.body.classList.add('pitch-focus');$('focusPitch').textContent='Exit expanded view';$('focusPitch').setAttribute('aria-pressed','true');requestAnimationFrame(draw);};
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('tileFeedback').open)leaveFocus();});
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){if(selected)closeTile();else leaveFocus();}});
 function centerInitialMobileMesh(){
  if(!frames.length||!window.matchMedia('(max-width: 900px)').matches)return;
  // Wait for the initial frame to paint; do this only at startup so later
@@ -83,8 +83,29 @@ function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingCli
  $('scrub').value=index;$('frame').textContent=f.frame;$('clock').textContent=(f.timestamp??'').replace(/^00:/,'');$('vertices').textContent=points.length;$('estimated').textContent=points.filter(p=>!p.is_detected).length;
  if(selected){const t=triangles.find(t=>t.key===selected);if(t){const edges=t.vs.map((p,i)=>{const q=t.vs[(i+1)%3];return Math.hypot(p.x-q.x,p.y-q.y).toFixed(1);});$('inspect').textContent=`${t.area.toFixed(1)} m²${holdLabel} · ball access ${t.entry.score==null?t.entry.reason:Math.round(t.entry.score*100)+"/100 via "+t.entry.route+(t.entry.seconds?" (~"+t.entry.seconds.toFixed(1)+" s)":"")} · pass ${t.entry.pass==null?"—":Math.round(t.entry.pass*100)+"/100"} · carry ${t.entry.carry==null?"—":Math.round(t.entry.carry*100)+"/100"} · potential danger ${t.potential==null?"unavailable":t.potential.toFixed(3)} · edges ${edges.join(' / ')} m · ${t.vs.flatMap(v=>v.members.map(p=>p.name+(p.is_detected?'':' (estimated)'))).join(' ↔ ')}${t.ball?' · ball-adjacent':''}.`; }else $('inspect').textContent='Selected triangle is no longer present in this frame.';}
  const popup=$('tileFeedback');
- if(selected){$('tileSummary').textContent=$('inspect').textContent;popup.hidden=false;if(!popup.open)popup.showModal();}
+ if(selected){
+  const t=triangles.find(t=>t.key===selected);
+  if(t){
+   $('tileSummary').textContent=$('inspect').textContent;
+   $('tileArea').textContent=`${t.area.toFixed(1)} m²`;
+   $('tileAccess').textContent=t.entry.score==null?'—':`${Math.round(t.entry.score*100)}/100`;
+   $('tileDanger').textContent=t.potential==null?'—':t.potential.toFixed(3);
+   $('tileRoute').textContent=t.entry.score==null?t.entry.reason:`Best route: ${t.entry.route}${t.entry.seconds?' · '+t.entry.seconds.toFixed(1)+' s':''} · Pass ${t.entry.pass==null?'—':Math.round(t.entry.pass*100)} / Carry ${t.entry.carry==null?'—':Math.round(t.entry.carry*100)}${holdLabel}`;
+   $('tilePlayers').textContent=t.vs.flatMap(v=>v.members.map(p=>p.name)).join(' · ');
+   $('tileEdges').textContent='Edges: '+t.vs.map((p,i)=>{const q=t.vs[(i+1)%3];return Math.hypot(p.x-q.x,p.y-q.y).toFixed(1);}).join(' / ')+' m';
+   popup.hidden=false;if(!popup.open)popup.show();positionTilePopup(t);
+  }else closeTile();
+ }
  else{if(popup.open)popup.close();popup.hidden=true;}
+}
+function positionTilePopup(t){
+ const popup=$('tileFeedback'),rect=canvas.getBoundingClientRect(),size=popup.getBoundingClientRect();
+ const x=rect.left+transform.ox+t.vs.reduce((s,p)=>s+p.x,0)/3*transform.scale;
+ const y=rect.top+transform.oy-t.vs.reduce((s,p)=>s+p.y,0)/3*transform.scale;
+ const viewportWidth=window.innerWidth??rect.width;
+ const left=Math.max(8,Math.min(x-size.width/2,viewportWidth-size.width-8));
+ popup.style.left=`${left}px`;popup.style.top=`${Math.max(8,y-size.height-14)}px`;
+ popup.style.setProperty('--anchor-x',`${Math.max(16,Math.min(size.width-16,x-left))}px`);
 }
 function selectTriangle(clientX,clientY){
  if(!transform||$('mode').value!=='triangles')return;
@@ -102,7 +123,8 @@ canvas.addEventListener('click',e=>{if(performance.now()-lastTouchSelection<600)
 function closeTile(){selected=null;draw();}
 $('clearTile').onclick=closeTile;
 $('tileFeedback').addEventListener('cancel',e=>{e.preventDefault();closeTile();});
-$('tileFeedback').addEventListener('click',e=>{if(e.target!==$('tileFeedback'))return;const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)closeTile();});
+document.addEventListener('pointerdown',e=>{if(selected&&!$('tileFeedback').contains(e.target)&&e.target!==canvas)closeTile();});
+window.addEventListener('scroll',()=>{const t=triangles.find(t=>t.key===selected);if(t)positionTilePopup(t);},{passive:true});
 
 function chanceLabel(c){return `${c.outcome==='goal'?'GOAL':'SHOT'} · P${c.period} ${c.time} · ${c.team} · ${c.player??'goal marker'} · peak EPV ${c.peakEpv==null?'unavailable':c.peakEpv.toFixed(3)}`;}
 function fillChances(){
@@ -141,7 +163,7 @@ $('load').onclick=()=>loadClip(chances.find(c=>c.id===$('chance').value)??null);
 $('chance').onchange=()=>{const c=chances.find(c=>c.id===$('chance').value);if(c){$('start').value=c.startFrame;$('phase').value='';return loadClip(c);}};
 $('jumpShot').onclick=()=>{if(!loadedChance)return;index=frames.reduce((best,f,i)=>Math.abs(f.frame-loadedChance.anchorFrame)<Math.abs(frames[best].frame-loadedChance.anchorFrame)?i:best,0);playing=false;$('play').textContent='▶ Play';draw();};
 $('match').onchange=choose;$('demo').onclick=demo;
-$('play').onclick=()=>{if(index>=frames.length-1)index=0;playing=!playing;last=performance.now();$('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();};
+$('play').onclick=()=>{selected=null;if(index>=frames.length-1)index=0;playing=!playing;last=performance.now();$('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();};
 $('scrub').oninput=()=>{index=Number($('scrub').value);playing=false;$('play').textContent='▶ Play';draw();};
 for(const id of ['mode','team','colour','ball','ballOnly','detected','showEstimates'])$(id).onchange=()=>{selected=null;$('inspect').textContent=$('mode').value==='voronoi'?'Cells show proximity to each selected site; ball cells are neutral.':'Pause and click a triangle to inspect it.';draw();};
 function tick(now){if(playing&&frames.length){const dt=50/Number($('speed').value);if(now-last>=dt){index=Math.min(frames.length-1,index+Math.floor((now-last)/dt));last=now;draw();if(index===frames.length-1){playing=false;$('play').textContent='▶ Replay';}}}requestAnimationFrame(tick);}requestAnimationFrame(tick);window.addEventListener('resize',draw);

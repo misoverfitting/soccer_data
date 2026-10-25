@@ -44,7 +44,9 @@ function drawSoccerBall(x,y,tint,detected){
  function pentagon(cx,cy,size,rotation){ctx.beginPath();for(let i=0;i<5;i++){const a=rotation+i*Math.PI*2/5;const p=[cx+Math.cos(a)*size,cy+Math.sin(a)*size];i?ctx.lineTo(...p):ctx.moveTo(...p);}ctx.closePath();ctx.fill();}
  for(let i=0;i<5;i++){const angle=-Math.PI/2+i*Math.PI*2/5;ctx.beginPath();ctx.moveTo(Math.cos(angle)*r*.36,Math.sin(angle)*r*.36);ctx.lineTo(Math.cos(angle)*r,Math.sin(angle)*r);ctx.stroke();pentagon(Math.cos(angle)*r*.98,Math.sin(angle)*r*.98,r*.32,angle+Math.PI);}
  pentagon(0,0,r*.4,-Math.PI/2);
- ctx.restore();ctx.beginPath();ctx.arc(0,0,r+.4,0,Math.PI*2);ctx.strokeStyle=detected?'#f0f4f7':'#ffcc81';ctx.lineWidth=.8;ctx.setLineDash(detected?[]:[2,2]);ctx.stroke();ctx.restore();
+ ctx.restore();ctx.beginPath();ctx.arc(0,0,r+.4,0,Math.PI*2);ctx.strokeStyle='#000000';ctx.lineWidth=1.8;ctx.setLineDash([]);ctx.stroke();
+ if(!detected){ctx.beginPath();ctx.arc(0,0,r+1.8,0,Math.PI*2);ctx.strokeStyle='#ffcc81';ctx.lineWidth=.8;ctx.setLineDash([2,2]);ctx.stroke();}
+ ctx.restore();
 }
 function draw(){if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],points=vertices(f,meta,{team:$('team').value,ball:$('ball').checked,detectedOnly:$('detected').checked});

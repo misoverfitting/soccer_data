@@ -70,3 +70,10 @@ body.pitch-focus{overflow:hidden}
 .tile-popup-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.tile-popup-metrics small{font-size:8px;letter-spacing:1px}.tile-popup-metrics strong{display:block;font-size:15px;margin-top:4px;color:#c6f2e5}
 .tile-route{font-size:11px;color:#bbd1d5;margin:10px 0 8px}.tile-players{font-size:12px;margin:8px 0;color:#fff}.tile-edges{font-size:10px;margin:6px 0 0;color:#8eabb0}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* Compact the anchored inspector by 20%, without shrinking touch targets. */
+#tileFeedback,.pitch-focus #tileFeedback{width:min(232px,calc(100vw - 16px));padding:10px;font-size:11px;line-height:1.35}
+#tileFeedback .tile-feedback-heading{position:absolute;right:4px;top:2px;margin:0}
+#tileFeedback .tile-feedback-heading button{min-width:32px;min-height:32px;padding:0;background:transparent;font-size:20px}
+.tile-popup-metrics{gap:5px;padding-right:22px}.tile-popup-metrics strong{font-size:13px;margin-top:3px}.tile-popup-metrics small{font-size:7px;letter-spacing:.6px}
+.tile-route{font-size:10px;margin:7px 0 5px}.tile-players{font-size:11px;margin:5px 0}.tile-edges{font-size:9px;margin-top:4px}

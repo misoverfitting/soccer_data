@@ -10,7 +10,7 @@
 <header class="top">
   <div>
     <h1>Pitch Model Lab</h1>
-    <p class="sub">v0 vs v2 pitch control, EPV and defensive integrity · SkillCorner open data, A-League 2024/25 · 10 Hz</p>
+    <p class="sub">v0 vs v2 pitch control, EPV, carries and defensive integrity · SkillCorner open data, A-League 2024/25 · 10 Hz</p>
   </div>
   <button id="aboutBtn" class="ghost" aria-expanded="false" aria-controls="about">About the models</button>
 </header>
@@ -22,23 +22,29 @@
     12 m/s lofted pass with 0.6 s hang time. The value of a spot is SkillCorner's possession EPV smoothed by location only.</p>
   </div>
   <div>
-    <h2>v2 · fitted settings, defensive-context value</h2>
+    <h2>v2 · fitted settings, defensive-context value, carries</h2>
     <p>The same pitch-control model with 10 settings fitted on 11,110 passes from 15 training matches
     (held-out AUC 0.885, calibrated). The value of a spot is the location value × a multiplier for the
-    defensive situation there: how fast the nearest defender arrives, how close they are, and how many defenders are goal-side.</p>
+    defensive situation there: how fast the nearest defender arrives, how close they are, and how many defenders are goal-side.
+    The player on the ball can also <b>carry</b> it: a survival model fitted on 5,797 training carries (held-out AUC 0.77,
+    on a par with SkillCorner's pressure tag) gives the chance of keeping it, P<sub>keep</sub>, on a straight run at 81% of top speed.</p>
   </div>
   <div>
     <h2>Reading the layers</h2>
     <p><b>Pitch control</b>: chance the attacking team gets to the ball first (P<sub>att</sub>) or that a pass there is completed
-    (P<sub>succ</sub>, with interception along the path and the lofted option). <b>EPV</b>: value of having the ball at each spot.
-    <b>Gain</b>: P<sub>succ</sub>·V − (1−P<sub>succ</sub>)·V<sub>opp</sub> − V(ball), what a pass there is worth.
-    <b>Integrity</b>: how well the defence denies passes into the space from 5 m behind the ball to goal,
-    I = Σ V·(1−P<sub>succ</sub>) / Σ V. The map shows 1−P<sub>succ</sub> in that zone, faded where the space is worth little.
+    (P<sub>succ</sub>, with interception along the path and the lofted option), or, in v2, that the player on the ball (gold ring)
+    keeps it carrying it there (P<sub>keep</sub>). <b>EPV</b>: value of having the ball at each spot.
+    <b>Gain</b>: P·V − (1−P)·V<sub>opp</sub> − V(ball), what getting the ball there is worth: by a pass in v0, by the better of
+    a pass or a carry in v2. <b>Integrity</b>: how well the defence denies passes (and in v2 carries) into the space from 5 m behind
+    the ball to goal, I = Σ V·(1−P) / Σ V with P = P<sub>succ</sub> (v0) or max(P<sub>succ</sub>, P<sub>keep</sub>) (v2).
+    The map shows 1−P in that zone, faded where the space is worth little. Because v2 adds carries, v2 − v0 differences
+    mix the fitted settings with the carry option.
     Surfaces are always from the attacking team's point of view.</p>
   </div>
   <div>
     <h2>Caveats</h2>
-    <p>No receiver is known on a free-playing frame, so run credit is not applied. The v2 value was fitted on possession-start
+    <p>No receiver is known on a free-playing frame, so run credit is not applied. Carries are straight runs projected from
+    one frame, and nobody can carry while the ball is in flight. The v2 value was fitted on possession-start
     points and is applied here to every cell. Five matches (marked held-out) were not used to fit anything.</p>
   </div>
 </section>
@@ -80,6 +86,7 @@
       <div class="seg" id="pcKind" role="radiogroup" aria-label="Pitch control measure">
         <button data-v="att" role="radio" title="Chance the attack reaches the ball first">P<sub>att</sub></button>
         <button data-v="succ" role="radio" title="Chance a pass there is completed">P<sub>succ</sub></button>
+        <button data-v="keep" role="radio" title="Chance the player on the ball keeps it carrying it there (v2 only)">P<sub>keep</sub></button>
       </div>
       <div class="seg" id="view" role="radiogroup" aria-label="View">
         <button data-v="side" role="radio">Side by side</button>
@@ -118,7 +125,7 @@
     </div>
     <div class="itrack" id="itrack" hidden>
       <div class="itrackHead">
-        <span><b>Integrity I over the clip</b> · 1 = every valuable pass towards goal denied</span>
+        <span><b>Integrity I over the clip</b> · 1 = every valuable pass (v2: or carry) towards goal denied</span>
         <span class="key"><i class="ln v0"></i>v0</span><span class="key"><i class="ln v2"></i>v2</span>
       </div>
       <canvas id="itrackCanvas" aria-label="Integrity of the defending team over the clip"></canvas>
@@ -126,10 +133,10 @@
     <div class="status"><span id="status"></span><span id="progress"></span></div>
 
     <table class="readout" id="readout" aria-live="polite">
-      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th></tr></thead>
+      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v2 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th></tr></thead>
       <tbody>
-        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td></tr>
-        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td></tr>
+        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td></tr>
+        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td></tr>
       </tbody>
       <caption id="readoutCap">Hover over a pitch</caption>
     </table>

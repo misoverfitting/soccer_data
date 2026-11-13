@@ -3,7 +3,8 @@
 Run from the repository root:  python model_viewer/scripts/build_data.py
 
 Writes model_viewer/data/:
-  models.json            v0 + v2 pitch-control settings, the location value grid and the v2 context-value coefficients
+  models.json            v0 + v2 pitch-control settings, the location value grid, the v2 context-value coefficients
+                         and the carry model (v2 only)
   matches.json           the match list
   match/<id>.json        teams, pitch sides per period, each player's top speed / acceleration, and possession sequences
 """
@@ -22,6 +23,7 @@ OUT = ROOT / "model_viewer" / "data"
 # ---------------- models ----------------
 pcs = json.load(open(FITTED / "pitch_control_settings.json"))
 vm = json.load(open(FITTED / "value_model.json"))
+cm = json.load(open(FITTED / "carry_model.json"))
 V = np.array(vm["V_loc"])                                   # (68, 105), row = y, col = x
 coef_order = ["pressure_time", "log1p_nearest_def_m", "defenders_ahead",
               "pressure_time×near_goal", "log1p_nearest_def_m×near_goal", "defenders_ahead×near_goal"]
@@ -35,9 +37,12 @@ models = {
         "near_goal_scale_m": vm["near_goal_scale_m"], "cone_deg": vm["cone_deg"],
         "nearest_cap_m": vm["nearest_cap_m"], "pressure_cap_s": vm["pressure_cap_s"],
     },
+    "carry": {"versions": ["v2"], "hazard": cm["hazard"], "carry_speed": cm["carry_speed"], "def_delay": cm["def_delay"],
+              "fracs": cm["fracs"], "max_duration_s": cm["max_duration_s"], "ball_dist_m": 1.5},
     "provenance": {
         "v0": "Literature defaults; value = location only (V_loc).",
-        "v2": "10 settings fitted on 11,110 passes from 15 training matches; value = V_loc × defensive-context multiplier.",
+        "v2": "10 settings fitted on 11,110 passes from 15 training matches; value = V_loc × defensive-context multiplier; "
+              "carries valued with the survival model fitted on carries from the 15 training matches.",
         "V_loc": "Smoothed SkillCorner possession EPV by location, 15 training matches.",
         "test_matches": vm["test_matches"],
     },
@@ -88,7 +93,7 @@ for mdir in sorted(p for p in (DATA / "matches").iterdir() if p.name.isdigit()):
             "minute": int(g.minute_start.iloc[0]), "n": len(g), "players": names,
             "outcome": "goal" if goal else "shot" if shot else str(last.end_type),
             "max_epv": None if pd.isna(epv) else round(float(epv), 4),
-            "possessions": [{"start": int(r.frame_start), "end": int(r.frame_end), "player": r.player_name,
+            "possessions": [{"start": int(r.frame_start), "end": int(r.frame_end), "player": r.player_name, "player_id": int(r.player_id),
                              "end_type": r.end_type, "pass_outcome": None if pd.isna(r.pass_outcome) else r.pass_outcome,
                              "target": None if pd.isna(r.player_targeted_name) else r.player_targeted_name}
                             for r in g.itertuples()],

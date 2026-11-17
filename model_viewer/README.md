@@ -7,14 +7,22 @@ from `notebooks/defensive_shape_integrity.ipynb`, frame by frame:
 |---|---|---|
 | **Pitch control** (P_att or P_succ) | literature settings (0.5 s reaction, 15 m/s ball, σ 0.45, …) | 10 settings fitted on 15 matches (`notebooks/fitted/pitch_control_settings.json`) |
 | **EPV** | location only (`V_loc`) | location × defensive-context multiplier (`notebooks/fitted/value_model.json`) |
-| **Gain** | v0 P_succ × v0 value | v2 P_succ × v2 value |
-| **Integrity** (protection) | v0 P_succ, weighted by `V_loc` | v2 P_succ, weighted by `V_loc` |
+| **Gain** | passing: v0 P_succ × v0 value | the better of passing or carrying: v2 P × v2 value |
+| **Carries** (P_keep) | none: passes only | survival model fitted on carries from 15 training matches (`notebooks/fitted/carry_model.json`) |
+| **Integrity** (protection) | 1 − P_succ, weighted by `V_loc` | 1 − max(P_succ, P_keep), weighted by `V_loc` |
 
 **Integrity** is the notebook's protection score (Section 5, definition chosen in Section 8b): how well the defence
 denies passes into the space from 5 m behind the ball to goal, I = Σ V_loc·(1 − P_succ) / Σ V_loc over that zone.
 The layer shows 1 − P_succ in the zone (faded where the space is worth little), each pitch shows the frame's I,
 and a timeline under the player plots I for both versions across the clip (click it to jump). On Perth's goal the
 viewer reproduces the notebook's v2 values exactly: 0.861 → 0.561 → 0.575 → 0.620.
+
+**Carries** (v2): the player on the ball, ringed in gold, can carry it instead of passing. Pitch control → P<sub>keep</sub>
+shows the chance they keep it on a straight run to each spot (notebook Section 4c: 81% of top speed, a survival model
+in which the risk of losing the ball grows with every defender who can reach the carrier within about a second).
+Grey = no carry there: nobody on the ball (e.g. the ball in flight), v0, or further than the longest real carries
+(6.4 s). In a sequence the carrier is the player in possession; otherwise the attacker within 1.5 m of the ball.
+v2's Gain and Integrity count carries, so v2 − v0 differences mix the fitted settings with the carry option.
 
 Views: side by side, single model, or the difference v2 − v0. Hover a pitch to read both models' values at one spot.
 
@@ -23,7 +31,7 @@ Views: side by side, single model, or the difference v2 − v0. Hover a pitch to
 - `server.mjs` (Node 22, no dependencies) serves the page and `/api/clip/<match>?start=&end=`. Tracking is not in the
   image: it is read from the repo's Git LFS media URL with HTTP range requests (binary search on byte offset, then only
   the clip is downloaded, ~1–2 s). If a real tracking file is present locally under `data/matches/`, it is read from disk.
-- `public/model.js` is a line-for-line JavaScript port of the notebook's `pitch_control`, `time_to_reach`, the protection score and
+- `public/model.js` is a line-for-line JavaScript port of the notebook's `pitch_control`, `time_to_reach`, `carry_options`, the protection score and
   `context_value`. Two web workers (one per version) compute every frame of the clip in the browser, starting at the
   playhead. `test/model.test.mjs` checks the port against the Python model (`scripts/make_fixtures.py`): worst
   difference 5e-7.
@@ -42,7 +50,7 @@ npm test             # model parity + clip API
 ```
 
 After the fitted models or event data change: `python model_viewer/scripts/build_data.py` (and
-`python model_viewer/scripts/make_fixtures.py` to refresh the parity fixtures), from the repo root.
+`python model_viewer/scripts/make_fixtures.py` to refresh the parity fixtures; it reads the model code straight from the notebook), from the repo root.
 
 ## Deploy on Railway
 

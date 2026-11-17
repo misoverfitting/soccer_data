@@ -16,25 +16,29 @@ const SCALES = {
   pc:   {map: v => RDBU(v), lo: '0 · defence', mid: '0.5', hi: '1 · attack', diff: 0.5},
   epv:  {map: v => MAGMA((Math.log(Math.max(v, 1e-4)) - EPV_LO) / (EPV_HI - EPV_LO)), lo: '0.018', mid: '0.05', hi: '0.15+ (log scale)', diff: 0.05},
   gain: {map: v => RDBU(0.5 + v / 0.12), lo: '−0.06 · loses value', mid: '0', hi: '+0.06 · gains', diff: 0.05},
-  integ: {map: v => RDBU(1 - v), lo: '0 · pass there gets through', mid: '0.5', hi: '1 · denied', diff: 0.5},
+  integ: {map: v => RDBU(1 - v), lo: '0 · gets through', mid: '0.5', hi: '1 · denied', diff: 0.5},
 };
-const PROTECT_OUT = -1, PROT_BEHIND_M = 5;   // same as model.js: cells outside the ball → goal zone, and where the zone starts
+const PROTECT_OUT = -1, PROT_BEHIND_M = 5, NO_CARRY = -1;   // same as model.js: outside the ball → goal zone, zone start, no carry possible
 const TEXT = {
   pc: {v0: ['v0 · literature settings', 'reaction 0.5 s · ground ball 15 m/s · σ 0.45 · lofted 12 m/s'],
        v2: ['v2 · fitted settings', 'reaction 0.10 s · ground ball 17.3 m/s · σ 0.62 · lofted 20 m/s · fitted on 15 matches']},
   epv: {v0: ['v0 · location only', 'SkillCorner EPV smoothed by location'],
         v2: ['v2 · location + defensive context', '× pressure time, nearest defender, defenders goal-side']},
-  gain: {v0: ['v0 · literature PC × location value', 'P_succ·V − (1−P_succ)·V_opp − V(ball)'],
-         v2: ['v2 · fitted PC × context value', 'P_succ·V − (1−P_succ)·V_opp − V(ball)']},
+  gain: {v0: ['v0 · literature PC × location value', 'passes only: P_succ·V − (1−P_succ)·V_opp − V(ball)'],
+         v2: ['v2 · fitted PC × context value', 'best of passing or carrying there: P·V − (1−P)·V_opp − V(ball)']},
   integ: {v0: ['v0 · literature pitch control', '1 − P_succ from 5 m behind the ball to goal, weighted by V'],
-          v2: ['v2 · fitted pitch control', '1 − P_succ from 5 m behind the ball to goal, weighted by V']},
+          v2: ['v2 · fitted pitch control + carries', '1 − max(P_succ, P_keep) from 5 m behind the ball to goal, weighted by V']},
+  keep: {v0: ['v0 · passes only', 'no carry model in v0'],
+         v2: ['v2 · carry model', 'chance the player on the ball keeps it running there · 81% top speed · risk grows with each defender within ~1 s']},
 };
+const models_carry = ver => !!S.models?.carry?.versions.includes(ver);
+const panelText = ver => S.layer === 'pc' && S.pcKind === 'keep' ? TEXT.keep[ver] : TEXT[S.layer][ver];
 
 // ---------------- state ----------------
 const S = {
   models: null, matches: [], match: null, roster: new Map(), seq: null, filter: 'goal',
   clip: null,               // {id, frames, states, attTeam, flip, period}
-  res: {v0: [], v2: []}, vBall: {v0: [], v2: []}, integ: {v0: [], v2: []}, clipId: 0,
+  res: {v0: [], v2: []}, vBall: {v0: [], v2: []}, integ: {v0: [], v2: []}, carrier: {v0: [], v2: []}, clipId: 0,
   i: 0, playing: false, speed: 1, acc: 0, last: 0,
   layer: 'pc', pcKind: 'att', view: 'side', single: 'v2', hover: null, panels: [],
 };
@@ -71,7 +75,7 @@ function wireControls() {
   $$('#filter button').forEach(b => b.onclick = () => { S.filter = b.dataset.f; syncToggles(); renderSeqList(); });
   const seg = (id, key, after) => $$(`#${id} button`).forEach(b => b.onclick = () => {
     S[key] = id === 'speed' ? Number(b.dataset.v) : b.dataset.v; syncToggles(); after?.(); writeHash(); });
-  seg('layer', 'layer', buildPanels); seg('pcKind', 'pcKind', draw); seg('view', 'view', buildPanels); seg('single', 'single', buildPanels); seg('speed', 'speed');
+  seg('layer', 'layer', buildPanels); seg('pcKind', 'pcKind', buildPanels); seg('view', 'view', buildPanels); seg('single', 'single', buildPanels); seg('speed', 'speed');
   $('#play').onclick = togglePlay;
   $('#back').onclick = () => step(-1);
   $('#fwd').onclick = () => step(1);
@@ -203,13 +207,20 @@ function setAttack(teamId) {
 
 function buildStates(frames, attTeam, flip) {
   const byF = new Map(frames.map(f => [f.f, f])), sgn = flip ? -1 : 1;
+  // the player in possession at a frame (carries need to know who has the ball); otherwise the model uses
+  // the attacker within 1.5 m of the ball, as the notebook does
+  const poss = S.seq && S.seq.team_id === attTeam ? S.seq.possessions : [];
+  const onBall = f => { const p = poss.find(q => q.start <= f && f <= q.end); return p ? p.player_id : null; };
   return frames.map(fr => {
     if (!fr.b) return null;
     const prev = byF.get(fr.f - 2) || fr, next = byF.get(fr.f + 2) || fr;
     const pm = new Map(prev.pl.map(p => [p[0], p])), nm = new Map(next.pl.map(p => [p[0], p]));
     const rows = fr.pl.filter(p => S.roster.has(p[0]));
     const n = rows.length, s = {n, x: new Float64Array(n), y: new Float64Array(n), vx: new Float64Array(n), vy: new Float64Array(n),
-      vmax: new Float64Array(n), amax: new Float64Array(n), att: new Uint8Array(n), ball: [fr.b[0] * sgn, fr.b[1] * sgn]};
+      vmax: new Float64Array(n), amax: new Float64Array(n), att: new Uint8Array(n), ball: [fr.b[0] * sgn, fr.b[1] * sgn],
+      ids: rows.map(p => p[0]), carrier: -1};
+    const pid = onBall(fr.f);
+    if (pid != null) s.carrier = rows.findIndex(p => p[0] === pid);
     rows.forEach((p, i) => {
       const a = pm.get(p[0]) || p, c = nm.get(p[0]) || p, r = S.roster.get(p[0]);
       s.x[i] = p[1] * sgn; s.y[i] = p[2] * sgn;
@@ -226,6 +237,7 @@ function onResult(e) {
   S.res[m.version][m.i] = m.q || 'empty';
   S.vBall[m.version][m.i] = m.vBall;
   S.integ[m.version][m.i] = Number.isFinite(m.integrity) ? m.integrity : null;
+  S.carrier[m.version][m.i] = m.carrier ?? -1;
   if (m.i === S.i) draw();
   else if (S.layer === 'integ') drawTrack();
   progress();
@@ -297,7 +309,7 @@ function buildPanels() {
   const specs = S.view === 'side' ? [{ver: 'v0'}, {ver: 'v2'}] : S.view === 'single' ? [{ver: S.single}] : [{diff: true}];
   $('#pitches').className = 'pitches' + (specs.length === 1 ? ' one' : '');
   $('#pitches').innerHTML = specs.map((s, j) => {
-    const [title, sub] = s.diff ? ['v2 − v0', 'orange: v2 higher · purple: v2 lower'] : TEXT[S.layer][s.ver];
+    const [title, sub] = s.diff ? ['v2 − v0', 'orange: v2 higher · purple: v2 lower'] : panelText(s.ver);
     return `<div class="pitchCard"><span class="vball" data-j="${j}"></span><h3>${title}</h3><p>${sub}</p><canvas data-j="${j}"></canvas></div>`;
   }).join('');
   S.panels = specs.map((s, j) => ({...s, canvas: $(`#pitches canvas[data-j="${j}"]`), vball: $(`.vball[data-j="${j}"]`)}));
@@ -323,7 +335,8 @@ function field(ver, i) {
   const q = S.res[ver][i];
   if (!q || q === 'empty') return null;
   if (S.layer === 'integ') return k => q[4 * N + k] === PROTECT_OUT * 32767 ? NaN : q[4 * N + k] / 32767;
-  const o = S.layer === 'pc' ? (S.pcKind === 'att' ? 0 : N) : S.layer === 'epv' ? 2 * N : S.layer === 'gain' ? 3 * N : 4 * N;
+  if (S.layer === 'pc' && S.pcKind === 'keep') return k => q[5 * N + k] === NO_CARRY * 32767 ? NaN : q[5 * N + k] / 32767;
+  const o = S.layer === 'pc' ? (S.pcKind === 'att' ? 0 : S.pcKind === 'keep' ? 5 * N : N) : S.layer === 'epv' ? 2 * N : S.layer === 'gain' ? 3 * N : 4 * N;
   return k => q[o + k] / 32767;
 }
 function paintSurface(ctx, p, get) {
@@ -355,13 +368,22 @@ function draw() {
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#e9ece4'; ctx.fillRect(0, 0, W, H);
     let get = null;
-    if (p.diff) { const a = field('v0', S.i), b = field('v2', S.i); if (a && b) get = k => b(k) - a(k); }
+    if (p.diff) {
+      const a = field('v0', S.i), b = field('v2', S.i), keep = S.layer === 'pc' && S.pcKind === 'keep';
+      if (a && b) get = keep ? k => { const vb = b(k), va = a(k); return Number.isNaN(vb) ? NaN : vb - (Number.isNaN(va) ? 0 : va); }
+                             : k => b(k) - a(k);
+    }
     else get = field(p.ver, S.i);
     if (get) paintSurface(ctx, p, get);
     drawPitch(ctx, p);
     if (S.layer === 'integ' && fr.b) drawZone(ctx, p, fr);
     drawPlayers(ctx, p, fr);
+    if (!p.diff) drawCarrier(ctx, p, fr);
     if (S.hover) crosshair(ctx, p);
+    if (get && !p.diff && S.layer === 'pc' && S.pcKind === 'keep' && !models_carry(p.ver)) {
+      ctx.fillStyle = 'rgba(29,31,34,.75)'; ctx.font = `600 ${Math.max(12, 2.6 * p.scale)}px system-ui`; ctx.textAlign = 'center';
+      ctx.fillText('No carry model in v0', ...toPx(p, 0, 29)); ctx.textAlign = 'start';
+    }
     if (!get) { ctx.fillStyle = 'rgba(29,31,34,.7)'; ctx.font = `${12 * p.scale / 6}px system-ui`; ctx.fillText(fr.b ? 'computing…' : 'ball not tracked in this frame', 10 * p.scale / 6, 18 * p.scale / 6); }
     p.vball.classList.toggle('score', S.layer === 'integ');
     if (S.layer === 'integ') {
@@ -484,9 +506,10 @@ function readout() {
   const k = Math.min(NY - 1, Math.max(0, Math.round(ay + 33.5))) * NX + Math.min(NX - 1, Math.max(0, Math.round(ax + 52)));
   for (const v of ['v0', 'v2']) {
     const q = S.res[v][S.i];
-    for (let j = 0; j < 4; j++) {
+    for (const j of [0, 1, 5, 2, 3]) {
       const td = $(`#readout td[data-k="${v}-${j}"]`);
-      td.textContent = q && q !== 'empty' ? (q[j * N + k] / 32767).toFixed(j < 2 ? 2 : 3) : '—';
+      const raw = q && q !== 'empty' ? q[j * N + k] : null;
+      td.textContent = raw == null || (j === 5 && raw === NO_CARRY * 32767) ? '—' : (raw / 32767).toFixed(j < 2 || j === 5 ? 2 : 3);
     }
     const I = S.integ[v][S.i];
     $(`#readout td[data-k="${v}-I"]`).textContent = I == null ? '—' : I.toFixed(2);
@@ -497,6 +520,15 @@ function readout() {
   const who = best && bd < 3 ? ` · ${S.roster.get(best[0]).name} (${teamName(S.roster.get(best[0]).team_id)})` : '';
   $('#readoutCap').textContent = `${Math.round(ax)} m towards goal, ${Math.round(ay)} m across (attacking frame)${who}`;
 }
+// the player the carry model treats as on the ball (v2), ringed in gold
+function drawCarrier(ctx, p, fr) {
+  const c = S.carrier[p.ver]?.[S.i], st = S.clip.states[S.i];
+  if (c == null || c < 0 || !st || S.layer === 'epv') return;
+  const q = fr.pl.find(r => r[0] === st.ids[c]); if (!q) return;
+  const [x, y] = toPx(p, q[1], q[2]), r = Math.max(6, p.scale * 1.15);
+  ctx.beginPath(); ctx.arc(x, y, r + Math.max(3, p.scale * 0.45), 0, 2 * Math.PI);
+  ctx.lineWidth = Math.max(2, p.scale * 0.3); ctx.strokeStyle = '#f2b705'; ctx.stroke();
+}
 function renderLegend() {
   const sc = SCALES[S.layer], diff = S.view === 'diff';
   const c = document.createElement('canvas'); c.width = 240; c.height = 12;
@@ -506,11 +538,15 @@ function renderLegend() {
     const rgb = diff ? PUOR(t) : S.layer === 'pc' || S.layer === 'gain' ? RDBU(t) : S.layer === 'integ' ? RDBU(1 - t) : MAGMA(t);
     ctx.fillStyle = `rgb(${rgb.map(Math.round).join(',')})`; ctx.fillRect(x, 0, 1, 12);
   }
-  const lab = diff ? [`−${sc.diff}`, '0', `+${sc.diff}`] : [sc.lo, sc.mid, sc.hi];
+  const keep = S.layer === 'pc' && S.pcKind === 'keep';
+  const lab = diff ? [`−${sc.diff}`, '0', `+${sc.diff}`] : keep ? ['0 · ball lost', '0.5', '1 · kept'] : [sc.lo, sc.mid, sc.hi];
+  const keepNote = keep ? `<span class="key">grey = no carry there (nobody on the ball, or beyond ${S.models.carry.max_duration_s.toFixed(1)} s of running)</span>` : '';
   $('#legend').innerHTML = `<span>${lab[0]}</span><span id="lg"></span><span>${lab[2]}</span>
     <span class="key"><span class="dot" style="background:var(--attack)"></span>attacking</span>
     <span class="key"><span class="dot" style="background:var(--defend)"></span>defending</span>
+    ${keepNote}
     ${S.layer === 'integ' ? `<span class="key">grey = outside the zone · dashed line = zone starts 5 m behind the ball · faint = space worth little, counts less in I</span>` : ''}
+    ${S.layer !== 'epv' ? `<span class="key"><span class="dot" style="background:none;box-shadow:inset 0 0 0 2px #f2b705"></span>on the ball: the player whose carries v2 values</span>` : ''}
     <span class="key">dashed ring = position estimated off camera · line = run over the next second</span>`;
   $('#lg').replaceWith(c);
 }

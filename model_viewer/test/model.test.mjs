@@ -16,7 +16,7 @@ const toState = c => {
 };
 
 for (const c of cases) {
-  for (const version of ['v0', 'v2']) {
+  for (const version of ['v0', 'v2', 'v3']) {
     test(`frame ${c.frame} ${version} matches the Python model`, () => {
       const t0 = performance.now();
       const out = model.compute(toState(c), version);
@@ -53,11 +53,16 @@ for (const c of cases) {
       assert.ok(Math.abs(out.integrity - c[version].integrity) < 1e-5, `notebook I ${c[version].integrity}, viewer ${out.integrity}`);
     });
   }
-  test(`frame ${c.frame}: v0 has no carries, v2's gain is the better of passing and carrying`, () => {
-    const s = toState(c), o0 = model.compute(s, 'v0');
-    assert.ok(o0.pKeep.every(v => v === 0) && o0.carrier === -1);
-    const o2 = model.compute(s, 'v2');
-    for (let k = 0; k < model.N; k++) assert.ok(o2.gain[k] >= o2.gainPass[k]);
+  test(`frame ${c.frame}: v0 and v2 have no carries; v3 is v2 plus the better of passing and carrying`, () => {
+    const s = toState(c);
+    for (const v of ['v0', 'v2']) { const o = model.compute(s, v); assert.ok(o.pKeep.every(x => x === 0) && o.carrier === -1, v); }
+    const o2 = model.compute(s, 'v2'), pSucc2 = Float64Array.from(o2.pSucc), gain2 = Float64Array.from(o2.gain), v2 = Float64Array.from(o2.value);
+    const o3 = model.compute(s, 'v3');
+    for (let k = 0; k < model.N; k++) {
+      assert.equal(o3.pSucc[k], pSucc2[k]); assert.equal(o3.value[k], v2[k]); assert.equal(o3.gainPass[k], gain2[k]);
+      assert.ok(o3.gain[k] >= o3.gainPass[k]);
+    }
+    if (o3.carrier >= 0) assert.ok(o3.integrity <= o2.integrity + 1e-12, 'counting carries can only lower integrity');
   });
 }
 

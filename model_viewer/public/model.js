@@ -12,7 +12,7 @@ const roundHalfEven = v => { const r = Math.round(v); return Math.abs(v % 1) ===
 const FRACS = Array.from({length: 8}, (_, i) => 0.15 + i * (0.75 / 7));   // np.linspace(0.15, 0.9, 8)
 export const PROT_BEHIND_M = 5;     // the protection zone starts 5 m behind the ball (notebook: CELLS[:, 0] >= ball[0] - 5)
 export const PROTECT_OUT = -1;      // marks cells outside the protection zone
-export const NO_CARRY = -1;         // marks cells no carry can reach (nobody on the ball, v0, or beyond the longest carries)
+export const NO_CARRY = -1;         // marks cells no carry can reach (nobody on the ball, v0/v2, or beyond the longest carries)
 
 export function createModel(models) {
   const {x0, y0, nx, ny, half_l: HALF_L} = models.grid;
@@ -111,7 +111,7 @@ export function createModel(models) {
     return {pAtt, pSucc, tDef, f, defRows};
   }
 
-  /** v2 value: location value × multiplier for the defensive situation at each point (Section 4b). */
+  /** v2/v3 value: location value × multiplier for the defensive situation at each point (Section 4b). */
   function contextValueAt(s, px, py, pressureT, base) {
     let nearest = Infinity, ahead = 0;
     const gx = HALF_L - px, gy = -py, dGoal = Math.hypot(gx, gy);
@@ -192,8 +192,9 @@ export function createModel(models) {
    * Compute one model version for one frame.
    * s: {n, x, y, vx, vy, vmax, amax, att, ball:[x, y], carrier?} in the attacking frame; carrier = index of the player
    *    in possession, or −1/undefined to use the attacker within 1.5 m of the ball.
-   * version: 'v0' (literature settings, location-only value, passes only) or
-   *          'v2' (fitted settings, context value, passes and carries).
+   * version: 'v0' (literature settings, location-only value, passes only),
+   *          'v2' (fitted settings, context value, passes only) or
+   *          'v3' (v2 plus carries).
    * Returns Float64Arrays over the 105 × 68 grid (row = y): pAtt, pSucc, value, gain (best of pass or carry),
    * gainPass, pKeep (0 without carries), keepView (P_keep, or NO_CARRY where no carry is possible), protect;
    * and vBall, integrity, carrier (index or −1).
@@ -229,7 +230,7 @@ export function createModel(models) {
 
   /**
    * Integrity I = protection (Section 5 of the notebook, definition chosen in Section 8b):
-   * how well the defence denies passes (and, in v2, carries) into the valuable space between the ball and goal.
+   * how well the defence denies passes (and, in v3, carries) into the valuable space between the ball and goal.
    *   zone: cells at most 5 m behind the ball, up to the goal line ("ballgoal")
    *   I = Σ_zone V_loc · (1 − P_any) / Σ_zone V_loc,   P_any = max(P_succ, P_keep)
    * Both versions weight by the location value V_loc, as the notebook does.

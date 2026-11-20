@@ -3,7 +3,7 @@
 Run from the repository root:  python model_viewer/scripts/build_data.py
 
 Writes model_viewer/data/:
-  models.json            v0 + v2 pitch-control settings, the location value grid, the v2 context-value coefficients
+  models.json            v0 and v2/v3 pitch-control settings, the location value grid, the context-value coefficients
                          and the carry model (v2 only)
   matches.json           the match list
   match/<id>.json        teams, pitch sides per period, each player's top speed / acceleration, and possession sequences
@@ -29,7 +29,7 @@ coef_order = ["pressure_time", "log1p_nearest_def_m", "defenders_ahead",
               "pressure_time×near_goal", "log1p_nearest_def_m×near_goal", "defenders_ahead×near_goal"]
 models = {
     "grid": {"x0": -52.0, "y0": -33.5, "nx": V.shape[1], "ny": V.shape[0], "half_l": 52.5, "half_w": 34.0},
-    "settings": {"v0": pcs["defaults"], "v2": pcs["settings"]},
+    "settings": {"v0": pcs["defaults"], "v2": pcs["settings"], "v3": pcs["settings"]},   # v3 = v2 + carries
     "constants": {"LOFT_MIN_DIST": 15.0},
     "value": {
         "V_loc": [round(float(v), 6) for v in V.ravel()],
@@ -37,12 +37,12 @@ models = {
         "near_goal_scale_m": vm["near_goal_scale_m"], "cone_deg": vm["cone_deg"],
         "nearest_cap_m": vm["nearest_cap_m"], "pressure_cap_s": vm["pressure_cap_s"],
     },
-    "carry": {"versions": ["v2"], "hazard": cm["hazard"], "carry_speed": cm["carry_speed"], "def_delay": cm["def_delay"],
+    "carry": {"versions": ["v3"], "hazard": cm["hazard"], "carry_speed": cm["carry_speed"], "def_delay": cm["def_delay"],
               "fracs": cm["fracs"], "max_duration_s": cm["max_duration_s"], "ball_dist_m": 1.5},
     "provenance": {
         "v0": "Literature defaults; value = location only (V_loc).",
-        "v2": "10 settings fitted on 11,110 passes from 15 training matches; value = V_loc × defensive-context multiplier; "
-              "carries valued with the survival model fitted on carries from the 15 training matches.",
+        "v2": "10 settings fitted on 11,110 passes from 15 training matches; value = V_loc × defensive-context multiplier; passes only.",
+        "v3": "v2 plus carries, valued with the survival model fitted on carries from the 15 training matches.",
         "V_loc": "Smoothed SkillCorner possession EPV by location, 15 training matches.",
         "test_matches": vm["test_matches"],
     },

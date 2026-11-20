@@ -41,6 +41,7 @@ ev = g["events"]
 pp = ev[ev.event_type == "player_possession"].sort_values("frame_start")
 V_flat, CELLS = g["V_flat"], g["CELLS"]
 cases = []
+# v0: literature settings, passes · v2: fitted, passes · v3: fitted, passes and carries
 # 44209: Williams on the ball (carrier given) · 44245: Carluccio mid-carry · 44283: Risdon's one-touch cross
 # (carrier found by the 1.5 m rule, or none) · 12345: an ordinary frame
 for frame in [44209, 44245, 44283, 12345]:
@@ -56,7 +57,7 @@ for frame in [44209, 44245, 44283, 12345]:
                          "vmax": float(phys.loc[r.player_id, "vmax"]), "amax": float(phys.loc[r.player_id, "amax"])}
                         for r in st.itertuples()]}
     keep = np.arange(0, 7140, 7)
-    for name, settings, value_model, carry in [("v0", DEFAULT, None, None), ("v2", FITTED, VM, CARRY)]:
+    for name, settings, value_model, carry in [("v0", DEFAULT, None, None), ("v2", FITTED, VM, None), ("v3", FITTED, VM, CARRY)]:
         use(settings, value_model, carry)
         pc = g["pitch_control"](st, ball, carrier_id=on_ball)
         zone = CELLS[:, 0] >= ball[0] - 5
@@ -70,8 +71,9 @@ for frame in [44209, 44245, 44283, 12345]:
                       "v_ball": round(pc["v_ball"], 7), "integrity": round(integ, 7),
                       "carrier_id": None if pc["carrier"] is None else int(st.player_id.iloc[pc["carrier"]])}
     cases.append(case)
-    print(frame, row.player_name, "| carrier", case["v2"]["carrier_id"], "| v2 max gain", round(max(case["v2"]["gain"]), 4),
-          "| max P_keep", round(max(case["v2"]["p_keep"]), 3), "| I v0", round(case["v0"]["integrity"], 3), "v2", round(case["v2"]["integrity"], 3))
+    print(frame, row.player_name, "| carrier", case["v3"]["carrier_id"], "| v3 max gain", round(max(case["v3"]["gain"]), 4),
+          "| max P_keep", round(max(case["v3"]["p_keep"]), 3), "| I v0", round(case["v0"]["integrity"], 3),
+          "v2", round(case["v2"]["integrity"], 3), "v3", round(case["v3"]["integrity"], 3))
 use(FITTED, VM, CARRY)
 out = ROOT / "model_viewer" / "test" / "fixtures.json"
 out.parent.mkdir(exist_ok=True)

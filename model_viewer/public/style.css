@@ -75,6 +75,7 @@ select, input { background: var(--surface); border: 1px solid var(--line); borde
 .pitchCard canvas { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 6px; touch-action: pan-y; }
 .pitchCard .vball { float: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .pitchCard .vball.score { font-size: 15px; font-weight: 700; color: var(--ink); }
+.pitchCard .vball .dim { font-weight: 500; color: var(--muted); font-size: 13px; }
 
 .legend { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .legend canvas { width: 240px; height: 12px; border-radius: 3px; border: 1px solid var(--line); }

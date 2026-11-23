@@ -24,6 +24,17 @@ Grey = no carry there: nobody on the ball (e.g. the ball in flight), v0/v2, or f
 (6.4 s). In a sequence the carrier is the player in possession; otherwise the attacker within 1.5 m of the ball.
 v3 shares v2's pitch control and value, so v3 − v2 isolates what carries change; v2 − v0 isolates what fitting changed.
 
+**Danger** (notebook Section 8d) is the second frame score, reported beside integrity: how dangerous the most dangerous
+attacker the defence has left free is. Each outfield attacker except the one nearest the ball is projected 1 s ahead;
+each outfield defender is assigned one attacker (minimum total arrival time, as `scipy.optimize.linear_sum_assignment`);
+an attacker is covered if their defender arrives within the ball's travel time + 1 s (halved if not goal-side), and
+D = max over attackers of V × (1 − covered), with V the version's value (location value in v0, context value in v2/v3).
+Integrity predicts the defence winning the ball back; danger predicts how dangerous the next two actions get if it
+doesn't (held-out ρ 0.114 vs 0.001 for integrity). The Danger layer draws each attacker's 1 s-ahead spot sized by their
+share, rings the most dangerous one and joins them to their assigned defender; every pitch badge shows I and D together,
+the timeline plots D for all three versions, and the hover table has a D column. Danger is identical in v2 and v3: carries
+change the ball carrier's options, not who is free. On Perth's goal the viewer reproduces the notebook: D 0.037 → 0.088 → 0.107 → 0.078.
+
 Views: side by side (three pitches), single model, or the differences v2 − v0 and v3 − v2. Hover a pitch to read all
 three models' values at one spot.
 

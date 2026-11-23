@@ -1,5 +1,6 @@
 // One worker per model version. It computes every frame of the loaded clip, starting at the playhead
-// ("focus") and working forwards, and sends back all six surfaces quantised to Int16 (value × 32767).
+// ("focus") and working forwards, and sends back all six surfaces quantised to Int16 (value × 32767),
+// plus the frame's integrity and danger.
 import {createModel} from './model.js';
 
 let model = null, version = null, states = [], done = [], clipId = -1, focus = 0, busy = false;
@@ -22,12 +23,15 @@ function step() {
   if (i < 0 || !model) return;
   done[i] = true;
   const s = states[i];
-  if (!s) self.postMessage({clipId, version, i, q: null, integrity: null});
+  if (!s) self.postMessage({clipId, version, i, q: null, integrity: null, danger: null});
   else {
     const out = model.compute(s, version), N = model.N, q = new Int16Array(6 * N);
     const put = (arr, off) => { for (let k = 0; k < N; k++) q[off + k] = Math.round(Math.max(-1, Math.min(1, arr[k])) * 32767); };
     put(out.pAtt, 0); put(out.pSucc, N); put(out.value, 2 * N); put(out.gain, 3 * N); put(out.protect, 4 * N); put(out.keepView, 5 * N);
-    self.postMessage({clipId, version, i, q, vBall: out.vBall, integrity: out.integrity, carrier: out.carrier}, [q.buffer]);
+    // danger: the frame's score, and each attacker's 1 s-ahead spot and share of it (attacking frame, player ids)
+    const danger = Number.isFinite(out.danger) ? {D: out.danger, who: out.dangerWho >= 0 ? s.ids[out.dangerWho] : null,
+      list: out.dangerList.map(a => ({id: s.ids[a.i], x: a.x, y: a.y, c: a.contrib, def: a.def >= 0 ? s.ids[a.def] : null}))} : null;
+    self.postMessage({clipId, version, i, q, vBall: out.vBall, integrity: out.integrity, danger, carrier: out.carrier}, [q.buffer]);
   }
   schedule();
 }

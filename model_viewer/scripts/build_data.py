@@ -30,7 +30,7 @@ coef_order = ["pressure_time", "log1p_nearest_def_m", "defenders_ahead",
 models = {
     "grid": {"x0": -52.0, "y0": -33.5, "nx": V.shape[1], "ny": V.shape[0], "half_l": 52.5, "half_w": 34.0},
     "settings": {"v0": pcs["defaults"], "v2": pcs["settings"], "v3": pcs["settings"]},   # v3 = v2 + carries
-    "constants": {"LOFT_MIN_DIST": 15.0},
+    "constants": {"LOFT_MIN_DIST": 15.0, "T_CONTROL": 1.0},   # T_CONTROL: Section 3 tiling / 8d danger
     "value": {
         "V_loc": [round(float(v), 6) for v in V.ravel()],
         "intercept": vm["intercept"], "coef": [vm["coef"][k] for k in coef_order], "coef_names": coef_order,

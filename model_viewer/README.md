@@ -35,6 +35,13 @@ share, rings the most dangerous one and joins them to their assigned defender; e
 the timeline plots D for all three versions, and the hover table has a D column. Danger is identical in v2 and v3: carries
 change the ball carrier's options, not who is free. On Perth's goal the viewer reproduces the notebook: D 0.037 → 0.088 → 0.107 → 0.078.
 
+The Danger layer has two look-aheads (switch above the pitch, `d=1s|3s` in the URL). **D₁** is the score above (Section 8d).
+**D₃** (Section 8f, `danger_ext` / `free_top2_3s`) projects attackers 3 s ahead and adds the two highest V × (1 − covered).
+It predicts peak EPV over the next four actions better (held-out ρ 0.141 vs 0.106 for D₁), overlaps less with integrity
+(0.115 vs 0.326) and rises earlier in a move, but is noisier from frame to frame. With D₃ selected the two free attackers
+are ringed; the badge shows I, D₁ and D₃ together, and the hover table has a column for each. On Perth's goal the viewer
+reproduces the notebook: D₃ 0.227 → 0.256 → 0.235 → 0.184.
+
 Views: side by side (three pitches), single model, or the differences v2 − v0 and v3 − v2. Hover a pitch to read all
 three models' values at one spot.
 

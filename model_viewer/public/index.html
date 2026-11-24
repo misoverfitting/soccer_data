@@ -41,11 +41,14 @@
     of a pass or a carry in v3. <b>Integrity</b>: how well the defence denies passes (and in v3 carries) into the space from 5 m behind
     the ball to goal, I = Σ V·(1−P) / Σ V with P = P<sub>succ</sub> (v0, v2) or max(P<sub>succ</sub>, P<sub>keep</sub>) (v3).
     The map shows 1−P in that zone, faded where the space is worth little.
-    <b>Danger</b> (notebook Section 8d): how dangerous the most dangerous attacker the defence has left free is. Each attacker
+    <b>Danger</b> (notebook Sections 8d, 8f): how dangerous the most dangerous attacker the defence has left free is. Each attacker
     is projected 1 s ahead, each defender is assigned one attacker, and an attacker counts as covered if their defender gets
     there within the ball's travel time + 1 s (half if not goal-side); D = the highest V × (1 − covered). Integrity says how
     close the defence is to winning the ball back; danger says how dangerous the next actions get if it doesn't. The badge on
-    each pitch shows both. Danger is the same in v2 and v3: carries change the ball carrier's options, not who is free.
+    each pitch shows both. Two look-aheads: <b>D₁</b> (Section 8d) projects attackers 1 s ahead and takes the most dangerous;
+    <b>D₃</b> (Section 8f) projects them 3 s ahead and adds the two most dangerous. D₃ predicts the next four actions better
+    (held-out ρ 0.141 vs 0.106) and sees moves earlier, but is noisier from frame to frame.
+    Danger is the same in v2 and v3: carries change the ball carrier's options, not who is free.
     The two difference views separate the changes:
     v2 − v0 is what fitting changed, v3 − v2 is what carries changed.
     Surfaces are always from the attacking team's point of view.</p>
@@ -91,7 +94,11 @@
         <button data-v="epv" role="radio">EPV</button>
         <button data-v="gain" role="radio">Gain</button>
         <button data-v="integ" role="radio" title="How well the defence denies passes into the valuable space between the ball and goal">Integrity</button>
-        <button data-v="danger" role="radio" title="How dangerous the most dangerous attacker the defence has left free is, 1 s ahead">Danger</button>
+        <button data-v="danger" role="radio" title="How dangerous the attackers the defence has left free are">Danger</button>
+      </div>
+      <div class="seg" id="dKind" role="radiogroup" aria-label="Danger look-ahead" hidden>
+        <button data-v="1s" role="radio" title="Most dangerous free attacker, 1 s ahead (Section 8d)">D₁ · 1 s</button>
+        <button data-v="3s" role="radio" title="Two most dangerous free attackers, 3 s ahead (Section 8f): sees moves earlier, noisier">D₃ · 3 s, top two</button>
       </div>
       <div class="seg" id="pcKind" role="radiogroup" aria-label="Pitch control measure">
         <button data-v="att" role="radio" title="Chance the attack reaches the ball first">P<sub>att</sub></button>
@@ -145,11 +152,11 @@
     <div class="status"><span id="status"></span><span id="progress"></span></div>
 
     <table class="readout" id="readout" aria-live="polite">
-      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v3 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th><th title="Danger of the whole frame, not the cell">D (frame)</th></tr></thead>
+      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v3 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th><th title="Danger 1 s ahead (Section 8d), whole frame">D₁ (frame)</th><th title="Danger 3 s ahead, top two (Section 8f), whole frame">D₃ (frame)</th></tr></thead>
       <tbody>
-        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td><td data-k="v0-D"></td></tr>
-        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td><td data-k="v2-D"></td></tr>
-        <tr><th>v3</th><td data-k="v3-0"></td><td data-k="v3-1"></td><td data-k="v3-5"></td><td data-k="v3-2"></td><td data-k="v3-3"></td><td data-k="v3-I"></td><td data-k="v3-D"></td></tr>
+        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td><td data-k="v0-D"></td><td data-k="v0-D3"></td></tr>
+        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td><td data-k="v2-D"></td><td data-k="v2-D3"></td></tr>
+        <tr><th>v3</th><td data-k="v3-0"></td><td data-k="v3-1"></td><td data-k="v3-5"></td><td data-k="v3-2"></td><td data-k="v3-3"></td><td data-k="v3-I"></td><td data-k="v3-D"></td><td data-k="v3-D3"></td></tr>
       </tbody>
       <caption id="readoutCap">Hover over a pitch</caption>
     </table>

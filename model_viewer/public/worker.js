@@ -28,9 +28,10 @@ function step() {
     const out = model.compute(s, version), N = model.N, q = new Int16Array(6 * N);
     const put = (arr, off) => { for (let k = 0; k < N; k++) q[off + k] = Math.round(Math.max(-1, Math.min(1, arr[k])) * 32767); };
     put(out.pAtt, 0); put(out.pSucc, N); put(out.value, 2 * N); put(out.gain, 3 * N); put(out.protect, 4 * N); put(out.keepView, 5 * N);
-    // danger: the frame's score, and each attacker's 1 s-ahead spot and share of it (attacking frame, player ids)
-    const danger = Number.isFinite(out.danger) ? {D: out.danger, who: out.dangerWho >= 0 ? s.ids[out.dangerWho] : null,
-      list: out.dangerList.map(a => ({id: s.ids[a.i], x: a.x, y: a.y, c: a.contrib, def: a.def >= 0 ? s.ids[a.def] : null}))} : null;
+    // danger: the frame's scores, and each attacker's projected spot and share of it (attacking frame, player ids)
+    // (D1: 1 s ahead, Section 8d; D3: the two most dangerous, 3 s ahead, Section 8f)
+    const pack = (D, list) => ({D, list: list.map(a => ({id: s.ids[a.i], x: a.x, y: a.y, c: a.contrib, def: a.def >= 0 ? s.ids[a.def] : null}))});
+    const danger = Number.isFinite(out.danger) ? {'1s': pack(out.danger, out.dangerList), '3s': pack(out.dangerExt, out.dangerExtList)} : null;
     self.postMessage({clipId, version, i, q, vBall: out.vBall, integrity: out.integrity, danger, carrier: out.carrier}, [q.buffer]);
   }
   schedule();

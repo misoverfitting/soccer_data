@@ -122,4 +122,4 @@ select, input { background: var(--surface); border: 1px solid var(--line); borde
   .clock { min-width: 0; }
   .seqs { max-height: 40vh; }
 }
-@media (max-width: 480px) { .readout th, .readout td { padding: 5px 7px; } }
+@media (max-width: 480px) { .readout th, .readout td { padding: 5px 5px; } .readout { display: block; max-width: 100%; overflow-x: auto; } }

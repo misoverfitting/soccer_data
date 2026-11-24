@@ -1,6 +1,6 @@
 // Pitch control, value and carry models: a line-for-line port of Sections 2–4c of
 // notebooks/defensive_shape_integrity.ipynb (pitch_control, time_to_reach, context_value, carry_options),
-// plus the danger score of Section 8d (free_attacker_danger).
+// plus the danger scores of Sections 8d (free_attacker_danger) and 8f (danger_ext, top two free attackers 3 s ahead).
 // Runs in the browser and in Node (tests compare it with the Python output in test/fixtures.json).
 //
 // Every computation is in the ATTACKING frame: the team in possession attacks towards +x,
@@ -218,19 +218,22 @@ export function createModel(models) {
    * are assigned one attacker each (minimum total arrival time). An attacker is covered if their defender arrives within
    * ball travel + T_CONTROL, halved if the defender is not goal-side. Danger = max over attackers of V × (1 − covered),
    * with V the version's value (context value in v2/v3, location value in v0).
-   * Returns {danger, who, list}: who = state index of that attacker; list = per attacker {i, x, y, contrib, def}.
+   * ahead = how far attackers are projected (s): 1 for Section 8d's score; 3 for Section 8f's extended score
+   * (danger_ext, free_top2_3s), which adds the two highest V × (1 − covered).
+   * Returns {danger, top2, who, list}: who = state index of the most dangerous attacker; list = per attacker
+   * {i, x, y, contrib, def}.
    */
   const T_CONTROL = models.constants.T_CONTROL ?? 1.0, HALF_W = models.grid.half_w;
-  function danger(s, set, f, value) {
+  function danger(s, set, f, value, ahead = 1) {
     const gk = s.gk || new Uint8Array(s.n);
     const att = [], dfs = [];
     for (let i = 0; i < s.n; i++) (s.att[i] ? att : dfs).push(i);
     const atts = att.filter(i => !gk[i]), defs = dfs.filter(i => !gk[i]);
-    if (!atts.length) return {danger: NaN, who: -1, list: []};
+    if (!atts.length) return {danger: NaN, top2: NaN, who: -1, list: []};
     let near = atts[0], nd = Infinity;
     for (const i of atts) { const d = Math.hypot(s.x[i] - s.ball[0], s.y[i] - s.ball[1]); if (d < nd) { nd = d; near = i; } }
     const tg = atts.filter(i => i !== near);
-    const ax = tg.map(i => clip(s.x[i] + s.vx[i], -HALF_L + 0.5, HALF_L - 0.5)), ay = tg.map(i => clip(s.y[i] + s.vy[i], -HALF_W + 0.5, HALF_W - 0.5));
+    const ax = tg.map(i => clip(s.x[i] + ahead * s.vx[i], -HALF_L + 0.5, HALF_L - 0.5)), ay = tg.map(i => clip(s.y[i] + ahead * s.vy[i], -HALF_W + 0.5, HALF_W - 0.5));
     const T = defs.map(d => tg.map((_, a) => arrive(s, d, f, set, ax[a], ay[a])));
     const defOf = new Int32Array(tg.length).fill(-1);
     if (defs.length && tg.length) {
@@ -250,7 +253,8 @@ export function createModel(models) {
       if (contrib > D) { D = contrib; best = a; }
       return {i, x: ax[a], y: ay[a], contrib, def: d >= 0 ? defs[d] : -1};
     });
-    return {danger: tg.length ? D : NaN, who: best >= 0 ? tg[best] : -1, list};
+    const top = list.map(a => a.contrib).sort((a, b) => b - a);
+    return {danger: tg.length ? D : NaN, top2: tg.length ? top[0] + (top[1] ?? 0) : NaN, who: best >= 0 ? tg[best] : -1, list};
   }
 
   /**
@@ -262,7 +266,8 @@ export function createModel(models) {
    *          'v3' (v2 plus carries).
    * Returns Float64Arrays over the 105 × 68 grid (row = y): pAtt, pSucc, value, gain (best of pass or carry),
    * gainPass, pKeep (0 without carries), keepView (P_keep, or NO_CARRY where no carry is possible), protect;
-   * and vBall, integrity, danger (+ dangerWho, dangerList), carrier (index or −1).
+   * and vBall, integrity, danger (+ dangerWho, dangerList: 1 s ahead, Section 8d), dangerExt (+ dangerExtList: top two,
+   * 3 s ahead, Section 8f), carrier (index or −1).
  * s.gk (optional): 1 for goalkeepers, who are left out of the danger score as in the notebook.
    */
   function compute(s, version) {
@@ -289,9 +294,10 @@ export function createModel(models) {
     }
     if (!car) { pKeep0.fill(0); view0.fill(NO_CARRY); }
     const {protect, integrity} = protection(s, pAny, version);
-    const dz = danger(s, set, f, value);
+    const dz = danger(s, set, f, value, 1), dx = danger(s, set, f, value, 3);
     return {pAtt, pSucc, value, gain, gainPass, pKeep: car ? car.pKeep : pKeep0, keepView: car ? car.keepView : view0,
             vBall, protect, integrity, danger: dz.danger, dangerWho: dz.who, dangerList: dz.list,
+            dangerExt: dx.top2, dangerExtList: dx.list,
             carrier: car ? car.carrier : -1};
   }
 

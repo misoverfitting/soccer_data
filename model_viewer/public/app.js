@@ -41,7 +41,10 @@ const TEXT = {
          v3: ['v3 · carry model', 'chance the player on the ball keeps it running there · 81% top speed · risk grows with each defender within ~1 s']},
 };
 const models_carry = ver => !!S.models?.carry?.versions.includes(ver);
-const panelText = ver => S.layer === 'pc' && S.pcKind === 'keep' ? TEXT.keep[ver] : TEXT[S.layer][ver];
+TEXT.danger3 = {v0: ['v0 · literature PC, location value', 'top two free attackers in 3 s: Σ V_loc × (1 − covered)'],
+                v2: ['v2 · fitted PC, context value', 'top two free attackers in 3 s: Σ V × (1 − covered)'],
+                v3: ['v3 · same as v2', 'carries don\'t change danger: it is about who is free, not the ball carrier\'s options']};
+const panelText = ver => S.layer === 'pc' && S.pcKind === 'keep' ? TEXT.keep[ver] : S.layer === 'danger' && S.dKind === '3s' ? TEXT.danger3[ver] : TEXT[S.layer][ver];
 
 // ---------------- state ----------------
 const S = {
@@ -50,7 +53,7 @@ const S = {
   res: {v0: [], v2: [], v3: []}, vBall: {v0: [], v2: [], v3: []}, integ: {v0: [], v2: [], v3: []},
   carrier: {v0: [], v2: [], v3: []}, danger: {v0: [], v2: [], v3: []}, clipId: 0,
   i: 0, playing: false, speed: 1, acc: 0, last: 0,
-  layer: 'pc', pcKind: 'att', view: 'side', single: 'v3', hover: null, panels: [],
+  layer: 'pc', pcKind: 'att', dKind: '3s', view: 'side', single: 'v3', hover: null, panels: [],
 };
 const VERS = ['v0', 'v2', 'v3'];
 // the two difference views: what fitting changed, and what carries changed
@@ -58,7 +61,8 @@ const DIFFS = {diff: ['v0', 'v2'], diff3: ['v2', 'v3']};
 const workers = {};
 const N = 105 * 68, NX = 105, NY = 68;
 const TRACKED = ['integ', 'danger'];          // layers with a frame score and a timeline under the player
-const Dof = (ver, i) => S.danger[ver]?.[i]?.D ?? null;
+const Dof = (ver, i, kind = S.dKind) => S.danger[ver]?.[i]?.[kind]?.D ?? null;   // kind: '1s' (8d) or '3s' (8f, top two)
+const D_LABEL = {'1s': 'D₁', '3s': 'D₃'};
 
 // ---------------- boot ----------------
 async function boot() {
@@ -79,7 +83,7 @@ async function boot() {
   $('#match').innerHTML = S.matches.map(m => `<option value="${m.id}">${m.date} · ${m.label}${m.test_match ? ' · held-out' : ''}</option>`).join('');
   wireControls();
   const h = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
-  for (const [k, key] of [['l', 'layer'], ['k', 'pcKind'], ['v', 'view'], ['o', 'single']]) if (h[k]) S[key] = h[k];
+  for (const [k, key] of [['l', 'layer'], ['k', 'pcKind'], ['d', 'dKind'], ['v', 'view'], ['o', 'single']]) if (h[k]) S[key] = h[k];
   syncToggles();
   await selectMatch(Number(h.m) || 1925299, h.s ? Number(h.s) : null);
 }
@@ -90,7 +94,7 @@ function wireControls() {
   $$('#filter button').forEach(b => b.onclick = () => { S.filter = b.dataset.f; syncToggles(); renderSeqList(); });
   const seg = (id, key, after) => $$(`#${id} button`).forEach(b => b.onclick = () => {
     S[key] = id === 'speed' ? Number(b.dataset.v) : b.dataset.v; syncToggles(); after?.(); writeHash(); });
-  seg('layer', 'layer', buildPanels); seg('pcKind', 'pcKind', buildPanels); seg('view', 'view', buildPanels); seg('single', 'single', buildPanels); seg('speed', 'speed');
+  seg('layer', 'layer', buildPanels); seg('pcKind', 'pcKind', buildPanels); seg('dKind', 'dKind', buildPanels); seg('view', 'view', buildPanels); seg('single', 'single', buildPanels); seg('speed', 'speed');
   $('#play').onclick = togglePlay;
   $('#back').onclick = () => step(-1);
   $('#fwd').onclick = () => step(1);
@@ -107,12 +111,13 @@ function wireControls() {
 
 function syncToggles() {
   const set = (id, val) => $$(`#${id} button`).forEach(b => b.setAttribute('aria-checked', String(b.dataset.v ?? b.dataset.f) === String(val)));
-  set('filter', S.filter); set('layer', S.layer); set('pcKind', S.pcKind); set('view', S.view); set('single', S.single); set('speed', S.speed);
+  set('filter', S.filter); set('layer', S.layer); set('pcKind', S.pcKind); set('dKind', S.dKind); set('view', S.view); set('single', S.single); set('speed', S.speed);
   $('#pcKind').hidden = S.layer !== 'pc';
+  $('#dKind').hidden = S.layer !== 'danger';
   $('#single').hidden = S.view !== 'single';
 }
 function writeHash() {
-  const p = new URLSearchParams({m: S.match?.id ?? '', l: S.layer, k: S.pcKind, v: S.view, o: S.single});
+  const p = new URLSearchParams({m: S.match?.id ?? '', l: S.layer, k: S.pcKind, d: S.dKind, v: S.view, o: S.single});
   if (S.seq) p.set('s', S.seq.start);
   history.replaceState(null, '', '#' + p);
 }
@@ -413,11 +418,14 @@ function draw() {
     if (!get) { ctx.fillStyle = 'rgba(29,31,34,.7)'; ctx.font = `${12 * p.scale / 6}px system-ui`; ctx.fillText(fr.b ? 'computing…' : 'ball not tracked in this frame', 10 * p.scale / 6, 18 * p.scale / 6); }
     p.vball.classList.toggle('score', TRACKED.includes(S.layer));
     if (TRACKED.includes(S.layer)) {          // integrity and danger together, whichever of the two is shown
-      const I = ver => S.integ[ver][S.i], D = ver => Dof(ver, S.i);
+      const I = ver => S.integ[ver][S.i], D = kind => ver => Dof(ver, S.i, kind);
       const fmt = (x, d) => x == null ? '…' : x.toFixed(d);
       const dl = (f, d) => f(p.a) != null && f(p.b) != null ? (f(p.b) - f(p.a) >= 0 ? '+' : '−') + Math.abs(f(p.b) - f(p.a)).toFixed(d) : '…';
-      const parts = p.diff ? [`ΔI ${dl(I, 2)}`, `ΔD ${dl(D, 3)}`] : [`I ${fmt(I(p.ver), 2)}`, `D ${fmt(D(p.ver), 3)}`];
-      p.vball.innerHTML = S.layer === 'danger' ? `<span class="dim">${parts[0]}</span> · ${parts[1]}` : `${parts[0]} · <span class="dim">${parts[1]}</span>`;
+      const val = (lab, f, d) => p.diff ? `Δ${lab} ${dl(f, d)}` : `${lab} ${fmt(f(p.ver), d)}`;
+      // integrity, then danger 1 s and 3 s; the one the layer shows at full strength, the others dimmed
+      const parts = [['integ', val('I', I, 2)], ['1s', val(D_LABEL['1s'], D('1s'), 3)], ['3s', val(D_LABEL['3s'], D('3s'), 3)]];
+      const on = S.layer === 'danger' ? S.dKind : 'integ';
+      p.vball.innerHTML = parts.map(([k, t]) => k === on ? t : `<span class="dim">${t}</span>`).join(' · ');
     } else {
       const vb = p.diff ? null : S.vBall[p.ver][S.i];
       p.vball.textContent = (S.layer !== 'pc' && vb != null) ? `V(ball) ${vb.toFixed(3)}` : '';
@@ -426,18 +434,19 @@ function draw() {
   drawTrack();
   readout();
 }
-// danger: each attacker's spot in 1 s, sized by V × (1 − covered); the most dangerous one ringed, with its assigned defender
+// danger: each attacker's spot 1 s (or 3 s) ahead, sized by V × (1 − covered); the most dangerous one (3 s: two) ringed,
+// with the defender assigned to them
 const DANGER_RGB = '215,48,39';
 function drawDanger(ctx, p, fr, pass) {
-  const d = S.danger[p.ver]?.[S.i];
+  const d = S.danger[p.ver]?.[S.i]?.[S.dKind];
   if (!d) return;
   const sgn = S.clip.flip ? -1 : 1, pos = new Map(fr.pl.map(q => [q[0], q])), s = p.scale;
-  const top = d.list.reduce((a, b) => (b.c > (a?.c ?? -1) ? b : a), null);
+  const tops = [...d.list].sort((a, b) => b.c - a.c).slice(0, S.dKind === '3s' ? 2 : 1);
   const rOf = c => s * (0.5 + Math.sqrt(Math.max(0, c) / 0.15) * 2.6);
   for (const a of d.list) {
-    const at = pos.get(a.id), [x2, y2] = toPx(p, a.x * sgn, a.y * sgn), isTop = a === top;
+    const at = pos.get(a.id), [x2, y2] = toPx(p, a.x * sgn, a.y * sgn), isTop = tops.includes(a);
     if (pass === 'under') {
-      if (at) {                                     // run to the 1 s-ahead spot
+      if (at) {                                     // run to the projected spot
         ctx.strokeStyle = `rgba(${DANGER_RGB},${isTop ? 0.9 : 0.45})`; ctx.lineWidth = Math.max(1, s * (isTop ? 0.25 : 0.15));
         ctx.setLineDash([s * 0.6, s * 0.5]); ctx.beginPath(); ctx.moveTo(...toPx(p, at[1], at[2])); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
       }
@@ -453,9 +462,10 @@ function drawDanger(ctx, p, fr, pass) {
       ctx.lineWidth = Math.max(2, s * 0.35); ctx.strokeStyle = `rgb(${DANGER_RGB})`; ctx.stroke();
       const name = S.roster.get(a.id)?.name?.split(' ').slice(-1)[0] ?? '';
       ctx.font = `600 ${Math.max(11, s * 2.1)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-      const ty = y2 - rOf(a.c) - s * 0.9, label = `${name} ${a.c.toFixed(3)}`;
-      ctx.lineWidth = Math.max(2, s * 0.5); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(label, x2, ty);
-      ctx.fillStyle = `rgb(${DANGER_RGB})`; ctx.fillText(label, x2, ty); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      const label = `${name} ${a.c.toFixed(3)}`, half = ctx.measureText(label).width / 2, W = ctx.canvas.width / ctx.getTransform().a;
+      const tx = Math.min(Math.max(x2, half + 4), W - half - 4), ty = Math.max(y2 - rOf(a.c) - s * 0.9, s * 2.6);   // keep it on the canvas
+      ctx.lineWidth = Math.max(2, s * 0.5); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(label, tx, ty);
+      ctx.fillStyle = `rgb(${DANGER_RGB})`; ctx.fillText(label, tx, ty); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
     }
   }
 }
@@ -472,10 +482,11 @@ function drawTrack() {
   box.hidden = !TRACKED.includes(S.layer) || !S.clip;
   if (box.hidden) return;
   const isD = S.layer === 'danger';
-  $('#itrackTitle').innerHTML = isD ? '<b>Danger D over the clip</b> · value of the most dangerous attacker left free, 1 s ahead (v3 = v2)'
+  $('#itrackTitle').innerHTML = isD ? (S.dKind === '3s' ? '<b>Danger D₃ over the clip</b> · the two most dangerous attackers left free, 3 s ahead (v3 = v2)'
+    : '<b>Danger D₁ over the clip</b> · the most dangerous attacker left free, 1 s ahead (v3 = v2)')
     : '<b>Integrity I over the clip</b> · 1 = every valuable pass (v3: or carry) towards goal denied';
-  const series = Object.fromEntries(VERS.map(v => [v, isD ? S.danger[v].map(d => d?.D ?? null) : S.integ[v]]));
-  const yMax = isD ? Math.max(0.12, ...VERS.flatMap(v => series[v].filter(x => x != null))) : 1;
+  const series = Object.fromEntries(VERS.map(v => [v, isD ? S.danger[v].map(d => d?.[S.dKind]?.D ?? null) : S.integ[v]]));
+  const yMax = isD ? Math.max(S.dKind === '3s' ? 0.3 : 0.12, ...VERS.flatMap(v => series[v].filter(x => x != null))) : 1;
   const c = $('#itrackCanvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round((c.clientWidth || 600) * dpr), H = Math.round(90 * dpr);
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
@@ -586,9 +597,10 @@ function readout() {
   $('#readoutCap').textContent = `${Math.round(ax)} m towards goal, ${Math.round(ay)} m across (attacking frame)${who}`;
 }
 function frameScores(v) {
-  const I = S.integ[v][S.i], D = Dof(v, S.i);
+  const I = S.integ[v][S.i], D1 = Dof(v, S.i, '1s'), D3 = Dof(v, S.i, '3s');
   $(`#readout td[data-k="${v}-I"]`).textContent = I == null ? '—' : I.toFixed(2);
-  $(`#readout td[data-k="${v}-D"]`).textContent = D == null ? '—' : D.toFixed(3);
+  $(`#readout td[data-k="${v}-D"]`).textContent = D1 == null ? '—' : D1.toFixed(3);
+  $(`#readout td[data-k="${v}-D3"]`).textContent = D3 == null ? '—' : D3.toFixed(3);
 }
 // the player the carry model treats as on the ball (v3), ringed in gold
 function drawCarrier(ctx, p, fr) {
@@ -615,7 +627,7 @@ function renderLegend() {
     <span class="key"><span class="dot" style="background:var(--attack)"></span>attacking</span>
     <span class="key"><span class="dot" style="background:var(--defend)"></span>defending</span>
     ${keepNote}
-    ${S.layer === 'danger' ? `<span class="key"><span class="dot" style="background:rgba(215,48,39,.45)"></span>where each attacker will be in 1 s, sized by V × (1 − covered) · red ring = the most dangerous free attacker (= D) · blue dots = the defender assigned to them · backdrop = EPV, faded</span>` : ''}
+    ${S.layer === 'danger' ? `<span class="key"><span class="dot" style="background:rgba(215,48,39,.45)"></span>where each attacker will be in ${S.dKind === '3s' ? '3 s' : '1 s'}, sized by V × (1 − covered) · red ring${S.dKind === '3s' ? 's = the two most dangerous free attackers (their sum = D₃)' : ' = the most dangerous free attacker (= D₁)'} · blue dots = the defender assigned to them · backdrop = EPV, faded</span>` : ''}
     ${S.layer === 'integ' ? `<span class="key">grey = outside the zone · dashed line = zone starts 5 m behind the ball · faint = space worth little, counts less in I</span>` : ''}
     ${S.layer !== 'epv' && S.layer !== 'danger' ? `<span class="key"><span class="dot" style="background:none;box-shadow:inset 0 0 0 2px #f2b705"></span>on the ball: the player whose carries v3 values</span>` : ''}
     <span class="key">dashed ring = position estimated off camera · line = run over the next second</span>`;

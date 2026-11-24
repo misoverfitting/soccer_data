@@ -83,6 +83,20 @@ for (const c of cases) {
     }
     if (o3.carrier >= 0) assert.ok(o3.integrity <= o2.integrity + 1e-12, 'counting carries can only lower integrity');
   });
+  test(`frame ${c.frame}: two-action integrity is finite and no higher than one-action integrity`, () => {
+    const s = toState(c), base = model.compute(s, 'v3');
+    const out = model.integrityTwoActions(s, base);
+    assert.ok(Number.isFinite(out.integrity));
+    assert.ok(out.integrity <= base.integrity + 1e-12, 'one-step protection is retained as a floor');
+    let num = 0, den = 0;
+    for (let k = 0; k < model.N; k++) {
+      if (model.cellX[k] >= s.ball[0] - PROT_BEHIND_M) {
+        assert.ok(out.protect[k] >= 0 && out.protect[k] <= 1);
+        num += model.V_LOC[k] * out.protect[k]; den += model.V_LOC[k];
+      } else assert.equal(out.protect[k], PROTECT_OUT);
+    }
+    assert.ok(Math.abs(out.integrity - num / den) < 1e-12, 'I2 is value-weighted over the current zone');
+  });
 }
 
 function ref(c, version) { return c[version]; }

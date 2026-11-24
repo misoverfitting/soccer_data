@@ -319,5 +319,67 @@ export function createModel(models) {
     return {protect, integrity: den > 0 ? num / den : NaN};
   }
 
-  return {compute, grid: models.grid, N, cellX: CX, cellY: CY, lookup, V_LOC, carriesOn};
+  /**
+   * Integrity after one projected pass or carry, using the best value-weighted destination for each action.
+   * The current one-action reachability is retained as a floor; successor surfaces use the same v3 model.
+   */
+  function integrityTwoActions(s, base) {
+    const set = models.settings.v3, zone = new Uint8Array(N), p1 = new Float64Array(N);
+    let den = 0;
+    for (let k = 0; k < N; k++) {
+      zone[k] = CX[k] >= s.ball[0] - PROT_BEHIND_M ? 1 : 0;
+      p1[k] = Math.max(base.pSucc[k], base.pKeep?.[k] || 0);
+      if (zone[k]) den += V_LOC[k];
+    }
+    if (!(den > 0)) return {protect: Float64Array.from(p1, () => PROTECT_OUT), integrity: NaN};
+
+    let passChoice = null, carryChoice = null;
+    for (let k = 0; k < N; k++) if (zone[k]) {
+      const ps = base.pSucc[k], pc = base.pKeep?.[k] || 0;
+      if (ps > 0 && (!passChoice || ps * V_LOC[k] > passChoice.score)) passChoice = {k, prob: ps, score: ps * V_LOC[k], type: 'pass'};
+      if (pc > 0 && (!carryChoice || pc * V_LOC[k] > carryChoice.score)) carryChoice = {k, prob: pc, score: pc * V_LOC[k], type: 'carry'};
+    }
+
+    const gk = s.gk || new Uint8Array(s.n), attackers = [];
+    for (let i = 0; i < s.n; i++) if (s.att[i] && !gk[i]) attackers.push(i);
+    if (!attackers.length) return {protect: Float64Array.from(p1, () => PROTECT_OUT), integrity: NaN};
+    let carrier = base.carrier;
+    if (!(carrier >= 0 && carrier < s.n && s.att[carrier] && !gk[carrier])) {
+      carrier = attackers.reduce((best, i) => Math.hypot(s.x[i] - s.ball[0], s.y[i] - s.ball[1]) < Math.hypot(s.x[best] - s.ball[0], s.y[best] - s.ball[1]) ? i : best, attackers[0]);
+    }
+
+    const p2 = p1.slice(), selected = [passChoice, carryChoice].filter(Boolean), setFace = facing(s);
+    for (const choice of selected) {
+      const {k, prob, type} = choice, cx = CX[k], cy = CY[k], isCarry = type === 'carry';
+      let receiver = carrier, dt = Math.hypot(cx - s.ball[0], cy - s.ball[1]) / set.V_BALL;
+      if (isCarry) dt = Math.hypot(cx - s.ball[0], cy - s.ball[1]) / ((CM?.carry_speed ?? 0.81) * s.vmax[carrier]);
+      else {
+        let best = Infinity;
+        for (const i of attackers) if (i !== carrier) {
+          const arrival = arrive(s, i, setFace, set, cx, cy);
+          if (arrival < best) { best = arrival; receiver = i; }
+        }
+      }
+      if (!(dt >= 0 && dt <= 8) || !Number.isFinite(dt)) continue;
+      const nx = Float64Array.from(s.x, (v, i) => clip(v + s.vx[i] * dt, -HALF_L + 0.5, HALF_L - 0.5));
+      const ny = Float64Array.from(s.y, (v, i) => clip(v + s.vy[i] * dt, -HALF_W + 0.5, HALF_W - 0.5));
+      nx[receiver] = cx; ny[receiver] = cy;
+      const next = {...s, x: nx, y: ny, ball: [cx, cy], carrier: receiver};
+      const future = compute(next, 'v3');
+      for (let z = 0; z < N; z++) if (zone[z] && CX[z] >= cx - PROT_BEHIND_M) {
+        const branch = prob * Math.max(future.pSucc[z], future.pKeep?.[z] || 0);
+        if (branch > p2[z]) p2[z] = branch;
+      }
+    }
+
+    const protect = new Float64Array(N).fill(PROTECT_OUT);
+    let num = 0;
+    for (let k = 0; k < N; k++) if (zone[k]) {
+      protect[k] = 1 - clip(p2[k], 0, 1);
+      num += V_LOC[k] * protect[k];
+    }
+    return {protect, integrity: num / den};
+  }
+
+  return {compute, integrityTwoActions, grid: models.grid, N, cellX: CX, cellY: CY, lookup, V_LOC, carriesOn};
 }

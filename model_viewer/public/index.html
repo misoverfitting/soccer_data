@@ -115,6 +115,7 @@
         <button data-v="v0" role="radio">v0</button>
         <button data-v="v2" role="radio">v2</button>
         <button data-v="v3" role="radio">v3</button>
+        <button data-v="i2" role="radio" title="v3 Integrity with one projected pass or carry before scoring">I2 (v3)</button>
       </div>
     </div>
 
@@ -144,19 +145,19 @@
     </div>
     <div class="itrack" id="itrack" hidden>
       <div class="itrackHead">
-        <span id="itrackTitle"><b>Integrity I over the clip</b> · 1 = every valuable pass (v3: or carry) towards goal denied</span>
-        <span class="key"><i class="ln v0"></i>v0</span><span class="key"><i class="ln v2"></i>v2</span><span class="key"><i class="ln v3"></i>v3</span>
+        <span id="itrackTitle"><b>Integrity I and I2 over the clip</b> · I2 adds one projected pass or carry before scoring</span>
+        <span class="key"><i class="ln v0"></i>v0</span><span class="key"><i class="ln v2"></i>v2</span><span class="key"><i class="ln v3"></i>v3</span><span class="key" id="itrackI2Key" hidden><i class="ln i2"></i>I2 (v3)</span>
       </div>
       <canvas id="itrackCanvas" aria-label="Integrity of the defending team over the clip"></canvas>
     </div>
     <div class="status"><span id="status"></span><span id="progress"></span></div>
 
     <table class="readout" id="readout" aria-live="polite">
-      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v3 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th><th title="Danger 1 s ahead (Section 8d), whole frame">D₁ (frame)</th><th title="Danger 3 s ahead, top two (Section 8f), whole frame">D₃ (frame)</th></tr></thead>
+      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v3 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th><th title="Two-action Integrity (v3 only)">I2 (frame)</th><th title="Danger 1 s ahead (Section 8d), whole frame">D₁ (frame)</th><th title="Danger 3 s ahead, top two (Section 8f), whole frame">D₃ (frame)</th></tr></thead>
       <tbody>
-        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td><td data-k="v0-D"></td><td data-k="v0-D3"></td></tr>
-        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td><td data-k="v2-D"></td><td data-k="v2-D3"></td></tr>
-        <tr><th>v3</th><td data-k="v3-0"></td><td data-k="v3-1"></td><td data-k="v3-5"></td><td data-k="v3-2"></td><td data-k="v3-3"></td><td data-k="v3-I"></td><td data-k="v3-D"></td><td data-k="v3-D3"></td></tr>
+        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td><td>—</td><td data-k="v0-D"></td><td data-k="v0-D3"></td></tr>
+        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td><td>—</td><td data-k="v2-D"></td><td data-k="v2-D3"></td></tr>
+        <tr><th>v3</th><td data-k="v3-0"></td><td data-k="v3-1"></td><td data-k="v3-5"></td><td data-k="v3-2"></td><td data-k="v3-3"></td><td data-k="v3-I"></td><td data-k="v3-I2"></td><td data-k="v3-D"></td><td data-k="v3-D3"></td></tr>
       </tbody>
       <caption id="readoutCap">Hover over a pitch</caption>
     </table>

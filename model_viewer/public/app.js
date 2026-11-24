@@ -1,4 +1,4 @@
-// Pitch Model Lab: pick a sequence, play it back, and compare v0 and v2 pitch control / EPV / gain / integrity surfaces.
+// Pitch Model Lab: pick a sequence, play it back, and compare v0, v2 and v3 pitch control / EPV / gain / integrity / danger.
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const getJSON = async url => { const r = await fetch(url); if (!r.ok) throw Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`); return r.json(); };
@@ -18,18 +18,27 @@ const SCALES = {
   gain: {map: v => RDBU(0.5 + v / 0.12), lo: '−0.06 · loses value', mid: '0', hi: '+0.06 · gains', diff: 0.05},
   integ: {map: v => RDBU(1 - v), lo: '0 · gets through', mid: '0.5', hi: '1 · denied', diff: 0.5},
 };
+SCALES.danger = {...SCALES.epv};          // the danger layer paints the value surface (faded) under the free attackers
 const PROTECT_OUT = -1, PROT_BEHIND_M = 5, NO_CARRY = -1;   // same as model.js: outside the ball → goal zone, zone start, no carry possible
 const TEXT = {
   pc: {v0: ['v0 · literature settings', 'reaction 0.5 s · ground ball 15 m/s · σ 0.45 · lofted 12 m/s'],
-       v2: ['v2 · fitted settings', 'reaction 0.10 s · ground ball 17.3 m/s · σ 0.62 · lofted 20 m/s · fitted on 15 matches']},
+       v2: ['v2 · fitted settings', 'reaction 0.10 s · ground ball 17.3 m/s · σ 0.62 · lofted 20 m/s · fitted on 15 matches'],
+       v3: ['v3 · fitted settings', 'same as v2: carries change gain and integrity, not pitch control']},
   epv: {v0: ['v0 · location only', 'SkillCorner EPV smoothed by location'],
-        v2: ['v2 · location + defensive context', '× pressure time, nearest defender, defenders goal-side']},
+        v2: ['v2 · location + defensive context', '× pressure time, nearest defender, defenders goal-side'],
+        v3: ['v3 · location + defensive context', 'same as v2']},
   gain: {v0: ['v0 · literature PC × location value', 'passes only: P_succ·V − (1−P_succ)·V_opp − V(ball)'],
-         v2: ['v2 · fitted PC × context value', 'best of passing or carrying there: P·V − (1−P)·V_opp − V(ball)']},
+         v2: ['v2 · fitted PC × context value', 'passes only: P_succ·V − (1−P_succ)·V_opp − V(ball)'],
+         v3: ['v3 · v2 + carries', 'best of passing or carrying there: P·V − (1−P)·V_opp − V(ball)']},
   integ: {v0: ['v0 · literature pitch control', '1 − P_succ from 5 m behind the ball to goal, weighted by V'],
-          v2: ['v2 · fitted pitch control + carries', '1 − max(P_succ, P_keep) from 5 m behind the ball to goal, weighted by V']},
+          v2: ['v2 · fitted pitch control', '1 − P_succ from 5 m behind the ball to goal, weighted by V'],
+          v3: ['v3 · fitted pitch control + carries', '1 − max(P_succ, P_keep) from 5 m behind the ball to goal, weighted by V']},
+  danger: {v0: ['v0 · literature PC, location value', 'most dangerous free attacker in 1 s: V_loc × (1 − covered)'],
+           v2: ['v2 · fitted PC, context value', 'most dangerous free attacker in 1 s: V × (1 − covered)'],
+           v3: ['v3 · same as v2', 'carries don\'t change danger: it is about who is free, not the ball carrier\'s options']},
   keep: {v0: ['v0 · passes only', 'no carry model in v0'],
-         v2: ['v2 · carry model', 'chance the player on the ball keeps it running there · 81% top speed · risk grows with each defender within ~1 s']},
+         v2: ['v2 · passes only', 'no carry model in v2'],
+         v3: ['v3 · carry model', 'chance the player on the ball keeps it running there · 81% top speed · risk grows with each defender within ~1 s']},
 };
 const models_carry = ver => !!S.models?.carry?.versions.includes(ver);
 const panelText = ver => S.layer === 'pc' && S.pcKind === 'keep' ? TEXT.keep[ver] : TEXT[S.layer][ver];
@@ -38,12 +47,18 @@ const panelText = ver => S.layer === 'pc' && S.pcKind === 'keep' ? TEXT.keep[ver
 const S = {
   models: null, matches: [], match: null, roster: new Map(), seq: null, filter: 'goal',
   clip: null,               // {id, frames, states, attTeam, flip, period}
-  res: {v0: [], v2: []}, vBall: {v0: [], v2: []}, integ: {v0: [], v2: []}, carrier: {v0: [], v2: []}, clipId: 0,
+  res: {v0: [], v2: [], v3: []}, vBall: {v0: [], v2: [], v3: []}, integ: {v0: [], v2: [], v3: []},
+  carrier: {v0: [], v2: [], v3: []}, danger: {v0: [], v2: [], v3: []}, clipId: 0,
   i: 0, playing: false, speed: 1, acc: 0, last: 0,
-  layer: 'pc', pcKind: 'att', view: 'side', single: 'v2', hover: null, panels: [],
+  layer: 'pc', pcKind: 'att', view: 'side', single: 'v3', hover: null, panels: [],
 };
+const VERS = ['v0', 'v2', 'v3'];
+// the two difference views: what fitting changed, and what carries changed
+const DIFFS = {diff: ['v0', 'v2'], diff3: ['v2', 'v3']};
 const workers = {};
 const N = 105 * 68, NX = 105, NY = 68;
+const TRACKED = ['integ', 'danger'];          // layers with a frame score and a timeline under the player
+const Dof = (ver, i) => S.danger[ver]?.[i]?.D ?? null;
 
 // ---------------- boot ----------------
 async function boot() {
@@ -55,7 +70,7 @@ async function boot() {
     const r = e.currentTarget.getBoundingClientRect();
     stop(); setIndex(Math.round((e.clientX - r.left) / r.width * (S.clip.frames.length - 1)));
   });
-  for (const v of ['v0', 'v2']) {
+  for (const v of VERS) {
     const w = new Worker('worker.js', {type: 'module'});
     w.postMessage({type: 'init', models: S.models, version: v});
     w.onmessage = onResult;
@@ -186,10 +201,12 @@ function setAttack(teamId) {
   c.attTeam = teamId;
   c.flip = sideOf(teamId, c.period) === 'right_to_left';
   c.states = buildStates(c.frames, teamId, c.flip);
-  S.res = {v0: new Array(c.frames.length), v2: new Array(c.frames.length)};
-  S.vBall = {v0: [], v2: []};
-  S.integ = {v0: new Array(c.frames.length).fill(null), v2: new Array(c.frames.length).fill(null)};
-  for (const v of ['v0', 'v2']) {
+  S.res = Object.fromEntries(VERS.map(v => [v, new Array(c.frames.length)]));
+  S.vBall = Object.fromEntries(VERS.map(v => [v, []]));
+  S.integ = Object.fromEntries(VERS.map(v => [v, new Array(c.frames.length).fill(null)]));
+  S.carrier = Object.fromEntries(VERS.map(v => [v, []]));
+  S.danger = Object.fromEntries(VERS.map(v => [v, new Array(c.frames.length).fill(null)]));
+  for (const v of VERS) {
     workers[v].postMessage({type: 'clip', clipId, states: c.states});
     workers[v].postMessage({type: 'focus', clipId, i: S.i});
   }
@@ -217,7 +234,7 @@ function buildStates(frames, attTeam, flip) {
     const pm = new Map(prev.pl.map(p => [p[0], p])), nm = new Map(next.pl.map(p => [p[0], p]));
     const rows = fr.pl.filter(p => S.roster.has(p[0]));
     const n = rows.length, s = {n, x: new Float64Array(n), y: new Float64Array(n), vx: new Float64Array(n), vy: new Float64Array(n),
-      vmax: new Float64Array(n), amax: new Float64Array(n), att: new Uint8Array(n), ball: [fr.b[0] * sgn, fr.b[1] * sgn],
+      vmax: new Float64Array(n), amax: new Float64Array(n), att: new Uint8Array(n), gk: new Uint8Array(n), ball: [fr.b[0] * sgn, fr.b[1] * sgn],
       ids: rows.map(p => p[0]), carrier: -1};
     const pid = onBall(fr.f);
     if (pid != null) s.carrier = rows.findIndex(p => p[0] === pid);
@@ -225,7 +242,7 @@ function buildStates(frames, attTeam, flip) {
       const a = pm.get(p[0]) || p, c = nm.get(p[0]) || p, r = S.roster.get(p[0]);
       s.x[i] = p[1] * sgn; s.y[i] = p[2] * sgn;
       s.vx[i] = (c[1] - a[1]) * sgn / 0.4; s.vy[i] = (c[2] - a[2]) * sgn / 0.4;
-      s.vmax[i] = r.vmax; s.amax[i] = r.amax; s.att[i] = r.team_id === attTeam ? 1 : 0;
+      s.vmax[i] = r.vmax; s.amax[i] = r.amax; s.att[i] = r.team_id === attTeam ? 1 : 0; s.gk[i] = r.gk ? 1 : 0;
     });
     return s;
   });
@@ -238,18 +255,20 @@ function onResult(e) {
   S.vBall[m.version][m.i] = m.vBall;
   S.integ[m.version][m.i] = Number.isFinite(m.integrity) ? m.integrity : null;
   S.carrier[m.version][m.i] = m.carrier ?? -1;
+  S.danger[m.version][m.i] = m.danger;
   if (m.i === S.i) draw();
-  else if (S.layer === 'integ') drawTrack();
+  else if (TRACKED.includes(S.layer)) drawTrack();
   progress();
 }
 function progress() {
   const n = S.clip?.frames.length || 0, d = v => S.res[v].filter(x => x !== undefined).length;
-  const a = d('v0'), b = d('v2');
-  $('#progress').textContent = n && (a < n || b < n) ? `computing models · v0 ${a}/${n} · v2 ${b}/${n}` : n ? `models ready · ${n} frames` : '';
+  const done = VERS.map(d);
+  $('#progress').textContent = n && done.some(x => x < n) ? `computing models · ${VERS.map((v, j) => `${v} ${done[j]}/${n}`).join(' · ')}`
+    : n ? `models ready · ${n} frames` : '';
 }
 
 // ---------------- playback ----------------
-const needed = () => S.view === 'single' ? [S.single] : ['v0', 'v2'];
+const needed = () => S.view === 'single' ? [S.single] : DIFFS[S.view] || VERS;
 const ready = i => needed().every(v => S.res[v][i] !== undefined);
 function togglePlay() { S.playing ? stop() : play(); }
 function play() {
@@ -275,7 +294,7 @@ function step(d) { stop(); setIndex(S.i + d); }
 function setIndex(i) {
   if (!S.clip) return;
   S.i = Math.max(0, Math.min(S.clip.frames.length - 1, i));
-  for (const v of ['v0', 'v2']) workers[v].postMessage({type: 'focus', clipId: S.clipId, i: S.i});
+  for (const v of VERS) workers[v].postMessage({type: 'focus', clipId: S.clipId, i: S.i});
   syncIndex(); draw();
 }
 function syncIndex() {
@@ -306,10 +325,14 @@ function renderTicks() {
 const WORLD = {x0: -55.5, x1: 55.5, y0: -37, y1: 37};
 function buildPanels() {
   syncToggles();
-  const specs = S.view === 'side' ? [{ver: 'v0'}, {ver: 'v2'}] : S.view === 'single' ? [{ver: S.single}] : [{diff: true}];
-  $('#pitches').className = 'pitches' + (specs.length === 1 ? ' one' : '');
+  if (!VERS.includes(S.single)) S.single = 'v3';
+  if (!['side', 'single', ...Object.keys(DIFFS)].includes(S.view)) S.view = 'side';
+  const specs = S.view === 'side' ? VERS.map(ver => ({ver})) : S.view === 'single' ? [{ver: S.single}]
+    : [{diff: true, a: DIFFS[S.view][0], b: DIFFS[S.view][1]}];
+  $('#pitches').className = 'pitches' + (specs.length === 1 ? ' one' : specs.length === 3 ? ' three' : '');
   $('#pitches').innerHTML = specs.map((s, j) => {
-    const [title, sub] = s.diff ? ['v2 − v0', 'orange: v2 higher · purple: v2 lower'] : panelText(s.ver);
+    const [title, sub] = s.diff ? [`${s.b} − ${s.a}`, `orange: ${s.b} higher · purple: ${s.b} lower · ${s.a === 'v0' ? 'what fitting changed' : 'what carries changed'}`]
+      : panelText(s.ver);
     return `<div class="pitchCard"><span class="vball" data-j="${j}"></span><h3>${title}</h3><p>${sub}</p><canvas data-j="${j}"></canvas></div>`;
   }).join('');
   S.panels = specs.map((s, j) => ({...s, canvas: $(`#pitches canvas[data-j="${j}"]`), vball: $(`.vball[data-j="${j}"]`)}));
@@ -336,7 +359,7 @@ function field(ver, i) {
   if (!q || q === 'empty') return null;
   if (S.layer === 'integ') return k => q[4 * N + k] === PROTECT_OUT * 32767 ? NaN : q[4 * N + k] / 32767;
   if (S.layer === 'pc' && S.pcKind === 'keep') return k => q[5 * N + k] === NO_CARRY * 32767 ? NaN : q[5 * N + k] / 32767;
-  const o = S.layer === 'pc' ? (S.pcKind === 'att' ? 0 : S.pcKind === 'keep' ? 5 * N : N) : S.layer === 'epv' ? 2 * N : S.layer === 'gain' ? 3 * N : 4 * N;
+  const o = S.layer === 'pc' ? (S.pcKind === 'att' ? 0 : S.pcKind === 'keep' ? 5 * N : N) : S.layer === 'epv' || S.layer === 'danger' ? 2 * N : S.layer === 'gain' ? 3 * N : 4 * N;
   return k => q[o + k] / 32767;
 }
 function paintSurface(ctx, p, get) {
@@ -348,7 +371,8 @@ function paintSurface(ctx, p, get) {
     if (Number.isNaN(v)) [R, G, B] = OUT_RGB;          // integrity layer: outside the ball → goal zone
     else {
       [R, G, B] = p.diff ? PUOR(0.5 + v / (2 * sc.diff)) : sc.map(v);
-      if (S.layer === 'integ' && !p.diff) { const w = S.weight[k]; R = BG_RGB[0] + (R - BG_RGB[0]) * w; G = BG_RGB[1] + (G - BG_RGB[1]) * w; B = BG_RGB[2] + (B - BG_RGB[2]) * w; }
+      const w = S.layer === 'integ' && !p.diff ? S.weight[k] : S.layer === 'danger' && !p.diff ? 0.22 : 1;   // fade: integrity by value, danger's backdrop
+      if (w < 1) { R = BG_RGB[0] + (R - BG_RGB[0]) * w; G = BG_RGB[1] + (G - BG_RGB[1]) * w; B = BG_RGB[2] + (B - BG_RGB[2]) * w; }
     }
     const o = (r * NX + ix) * 4; img.data[o] = R; img.data[o + 1] = G; img.data[o + 2] = B; img.data[o + 3] = 255;
   }
@@ -369,7 +393,7 @@ function draw() {
     ctx.fillStyle = '#e9ece4'; ctx.fillRect(0, 0, W, H);
     let get = null;
     if (p.diff) {
-      const a = field('v0', S.i), b = field('v2', S.i), keep = S.layer === 'pc' && S.pcKind === 'keep';
+      const a = field(p.a, S.i), b = field(p.b, S.i), keep = S.layer === 'pc' && S.pcKind === 'keep';
       if (a && b) get = keep ? k => { const vb = b(k), va = a(k); return Number.isNaN(vb) ? NaN : vb - (Number.isNaN(va) ? 0 : va); }
                              : k => b(k) - a(k);
     }
@@ -377,19 +401,23 @@ function draw() {
     if (get) paintSurface(ctx, p, get);
     drawPitch(ctx, p);
     if (S.layer === 'integ' && fr.b) drawZone(ctx, p, fr);
+    if (S.layer === 'danger' && !p.diff) drawDanger(ctx, p, fr, 'under');
     drawPlayers(ctx, p, fr);
     if (!p.diff) drawCarrier(ctx, p, fr);
+    if (S.layer === 'danger' && !p.diff) drawDanger(ctx, p, fr, 'over');
     if (S.hover) crosshair(ctx, p);
     if (get && !p.diff && S.layer === 'pc' && S.pcKind === 'keep' && !models_carry(p.ver)) {
       ctx.fillStyle = 'rgba(29,31,34,.75)'; ctx.font = `600 ${Math.max(12, 2.6 * p.scale)}px system-ui`; ctx.textAlign = 'center';
-      ctx.fillText('No carry model in v0', ...toPx(p, 0, 29)); ctx.textAlign = 'start';
+      ctx.fillText(`No carry model in ${p.ver}`, ...toPx(p, 0, 29)); ctx.textAlign = 'start';
     }
     if (!get) { ctx.fillStyle = 'rgba(29,31,34,.7)'; ctx.font = `${12 * p.scale / 6}px system-ui`; ctx.fillText(fr.b ? 'computing…' : 'ball not tracked in this frame', 10 * p.scale / 6, 18 * p.scale / 6); }
-    p.vball.classList.toggle('score', S.layer === 'integ');
-    if (S.layer === 'integ') {
-      const I = ver => S.integ[ver][S.i], fmt = x => x == null ? '…' : x.toFixed(2);
-      p.vball.textContent = p.diff ? (I('v0') != null && I('v2') != null ? `ΔI ${(I('v2') - I('v0') >= 0 ? '+' : '−')}${Math.abs(I('v2') - I('v0')).toFixed(2)}` : '')
-        : `I ${fmt(I(p.ver))}`;
+    p.vball.classList.toggle('score', TRACKED.includes(S.layer));
+    if (TRACKED.includes(S.layer)) {          // integrity and danger together, whichever of the two is shown
+      const I = ver => S.integ[ver][S.i], D = ver => Dof(ver, S.i);
+      const fmt = (x, d) => x == null ? '…' : x.toFixed(d);
+      const dl = (f, d) => f(p.a) != null && f(p.b) != null ? (f(p.b) - f(p.a) >= 0 ? '+' : '−') + Math.abs(f(p.b) - f(p.a)).toFixed(d) : '…';
+      const parts = p.diff ? [`ΔI ${dl(I, 2)}`, `ΔD ${dl(D, 3)}`] : [`I ${fmt(I(p.ver), 2)}`, `D ${fmt(D(p.ver), 3)}`];
+      p.vball.innerHTML = S.layer === 'danger' ? `<span class="dim">${parts[0]}</span> · ${parts[1]}` : `${parts[0]} · <span class="dim">${parts[1]}</span>`;
     } else {
       const vb = p.diff ? null : S.vBall[p.ver][S.i];
       p.vball.textContent = (S.layer !== 'pc' && vb != null) ? `V(ball) ${vb.toFixed(3)}` : '';
@@ -398,6 +426,39 @@ function draw() {
   drawTrack();
   readout();
 }
+// danger: each attacker's spot in 1 s, sized by V × (1 − covered); the most dangerous one ringed, with its assigned defender
+const DANGER_RGB = '215,48,39';
+function drawDanger(ctx, p, fr, pass) {
+  const d = S.danger[p.ver]?.[S.i];
+  if (!d) return;
+  const sgn = S.clip.flip ? -1 : 1, pos = new Map(fr.pl.map(q => [q[0], q])), s = p.scale;
+  const top = d.list.reduce((a, b) => (b.c > (a?.c ?? -1) ? b : a), null);
+  const rOf = c => s * (0.5 + Math.sqrt(Math.max(0, c) / 0.15) * 2.6);
+  for (const a of d.list) {
+    const at = pos.get(a.id), [x2, y2] = toPx(p, a.x * sgn, a.y * sgn), isTop = a === top;
+    if (pass === 'under') {
+      if (at) {                                     // run to the 1 s-ahead spot
+        ctx.strokeStyle = `rgba(${DANGER_RGB},${isTop ? 0.9 : 0.45})`; ctx.lineWidth = Math.max(1, s * (isTop ? 0.25 : 0.15));
+        ctx.setLineDash([s * 0.6, s * 0.5]); ctx.beginPath(); ctx.moveTo(...toPx(p, at[1], at[2])); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      const df = a.def != null && pos.get(a.def);
+      if (df && isTop) {                            // the defender assigned to them
+        ctx.strokeStyle = 'rgba(42,111,219,.85)'; ctx.lineWidth = Math.max(1, s * 0.2); ctx.setLineDash([s * 0.25, s * 0.45]);
+        ctx.beginPath(); ctx.moveTo(...toPx(p, df[1], df[2])); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.beginPath(); ctx.arc(x2, y2, rOf(a.c), 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(${DANGER_RGB},${isTop ? 0.55 : 0.28})`; ctx.fill();
+    } else if (isTop) {
+      ctx.beginPath(); ctx.arc(x2, y2, rOf(a.c) + s * 0.35, 0, 2 * Math.PI);
+      ctx.lineWidth = Math.max(2, s * 0.35); ctx.strokeStyle = `rgb(${DANGER_RGB})`; ctx.stroke();
+      const name = S.roster.get(a.id)?.name?.split(' ').slice(-1)[0] ?? '';
+      ctx.font = `600 ${Math.max(11, s * 2.1)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      const ty = y2 - rOf(a.c) - s * 0.9, label = `${name} ${a.c.toFixed(3)}`;
+      ctx.lineWidth = Math.max(2, s * 0.5); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(label, x2, ty);
+      ctx.fillStyle = `rgb(${DANGER_RGB})`; ctx.fillText(label, x2, ty); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+    }
+  }
+}
 // integrity zone: from 5 m behind the ball (in the attacking direction) to the goal line
 function drawZone(ctx, p, fr) {
   const sgn = S.clip.flip ? -1 : 1, edge = (fr.b[0] * sgn - PROT_BEHIND_M) * sgn, hw = S.match.pitch[1] / 2;
@@ -405,22 +466,27 @@ function drawZone(ctx, p, fr) {
   ctx.save(); ctx.strokeStyle = 'rgba(17,17,17,.75)'; ctx.lineWidth = Math.max(1, p.scale * 0.2); ctx.setLineDash([p.scale * 1.2, p.scale * 0.8]);
   ctx.beginPath(); ctx.moveTo(...toPx(p, edge, hw)); ctx.lineTo(...toPx(p, edge, -hw)); ctx.stroke(); ctx.restore();
 }
-// integrity over the whole clip, both versions, with the playhead and the sequence's actions
+// integrity or danger over the whole clip, all three versions, with the playhead and the sequence's actions
 function drawTrack() {
   const box = $('#itrack');
-  box.hidden = S.layer !== 'integ' || !S.clip;
+  box.hidden = !TRACKED.includes(S.layer) || !S.clip;
   if (box.hidden) return;
+  const isD = S.layer === 'danger';
+  $('#itrackTitle').innerHTML = isD ? '<b>Danger D over the clip</b> · value of the most dangerous attacker left free, 1 s ahead (v3 = v2)'
+    : '<b>Integrity I over the clip</b> · 1 = every valuable pass (v3: or carry) towards goal denied';
+  const series = Object.fromEntries(VERS.map(v => [v, isD ? S.danger[v].map(d => d?.D ?? null) : S.integ[v]]));
+  const yMax = isD ? Math.max(0.12, ...VERS.flatMap(v => series[v].filter(x => x != null))) : 1;
   const c = $('#itrackCanvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round((c.clientWidth || 600) * dpr), H = Math.round(90 * dpr);
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   const ctx = c.getContext('2d'), n = S.clip.frames.length, css = getComputedStyle(document.documentElement);
   const ink = css.getPropertyValue('--muted').trim() || '#62666d', line = css.getPropertyValue('--line').trim() || '#dcdad3';
   const padL = 30 * dpr, padR = 6 * dpr, padT = 6 * dpr, padB = 14 * dpr;
-  const X = i => padL + (W - padL - padR) * i / Math.max(1, n - 1), Y = v => padT + (H - padT - padB) * (1 - v);
+  const X = i => padL + (W - padL - padR) * i / Math.max(1, n - 1), Y = v => padT + (H - padT - padB) * (1 - v / yMax);
   ctx.clearRect(0, 0, W, H);
   ctx.font = `${10 * dpr}px system-ui`; ctx.fillStyle = ink; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   ctx.strokeStyle = line; ctx.lineWidth = dpr;
-  for (const v of [0, 0.5, 1]) { ctx.beginPath(); ctx.moveTo(padL, Y(v)); ctx.lineTo(W - padR, Y(v)); ctx.stroke(); ctx.fillText(v.toFixed(1), padL - 5 * dpr, Y(v)); }
+  for (const v of [0, yMax / 2, yMax]) { ctx.beginPath(); ctx.moveTo(padL, Y(v)); ctx.lineTo(W - padR, Y(v)); ctx.stroke(); ctx.fillText(v.toFixed(isD ? 2 : 1), padL - 5 * dpr, Y(v)); }
   // action markers from the sequence
   if (S.seq) {
     const first = S.clip.frames[0].f, last = S.clip.frames[n - 1].f;
@@ -431,15 +497,15 @@ function drawTrack() {
       ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
     }
   }
-  for (const [ver, col, dash] of [['v0', '#9a9a9a', [4 * dpr, 3 * dpr]], ['v2', '#1a9850', []]]) {
-    ctx.strokeStyle = col; ctx.lineWidth = (ver === 'v2' ? 2 : 1.5) * dpr; ctx.setLineDash(dash); ctx.beginPath();
+  for (const [ver, col, dash] of [['v0', '#9a9a9a', [4 * dpr, 3 * dpr]], ['v2', '#2c7bb6', []], ['v3', '#1a9850', isD ? [2 * dpr, 3 * dpr] : []]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = (ver === 'v0' ? 1.5 : 2) * dpr; ctx.setLineDash(dash); ctx.beginPath();
     let pen = false;
-    S.integ[ver].forEach((v, i) => { if (v == null) { pen = false; return; } pen ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)); pen = true; });
+    series[ver].forEach((v, i) => { if (v == null) { pen = false; return; } pen ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)); pen = true; });
     ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.strokeStyle = css.getPropertyValue('--ink').trim() || '#1d1f22'; ctx.lineWidth = 1.5 * dpr;
   ctx.beginPath(); ctx.moveTo(X(S.i), padT); ctx.lineTo(X(S.i), H - padB); ctx.stroke();
-  const done = ['v0', 'v2'].map(v => S.integ[v].filter(x => x != null).length);
+  const done = VERS.map(v => series[v].filter(x => x != null).length);
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
   ctx.fillText(done.every(d => d >= n - S.clip.frames.filter(f => !f.b).length) ? 'click to jump' : 'filling in as the models compute…', padL, H - 2 * dpr);
 }
@@ -498,21 +564,20 @@ function readout() {
   const cells = $$('#readout td');
   if (!S.hover || !S.clip) {
     cells.forEach(c => c.textContent = '');
-    if (S.clip) for (const v of ['v0', 'v2']) { const I = S.integ[v][S.i]; $(`#readout td[data-k="${v}-I"]`).textContent = I == null ? '—' : I.toFixed(2); }
-    $('#readoutCap').textContent = 'Hover over a pitch to compare v0 and v2 at one spot';
+    if (S.clip) for (const v of VERS) frameScores(v);
+    $('#readoutCap').textContent = 'Hover over a pitch to compare v0, v2 and v3 at one spot';
     return;
   }
   const sgn = S.clip.flip ? -1 : 1, ax = S.hover.x * sgn, ay = S.hover.y * sgn;
   const k = Math.min(NY - 1, Math.max(0, Math.round(ay + 33.5))) * NX + Math.min(NX - 1, Math.max(0, Math.round(ax + 52)));
-  for (const v of ['v0', 'v2']) {
+  for (const v of VERS) {
     const q = S.res[v][S.i];
     for (const j of [0, 1, 5, 2, 3]) {
       const td = $(`#readout td[data-k="${v}-${j}"]`);
       const raw = q && q !== 'empty' ? q[j * N + k] : null;
       td.textContent = raw == null || (j === 5 && raw === NO_CARRY * 32767) ? '—' : (raw / 32767).toFixed(j < 2 || j === 5 ? 2 : 3);
     }
-    const I = S.integ[v][S.i];
-    $(`#readout td[data-k="${v}-I"]`).textContent = I == null ? '—' : I.toFixed(2);
+    frameScores(v);
   }
   const fr = S.clip.frames[S.i];
   let best = null, bd = Infinity;
@@ -520,10 +585,15 @@ function readout() {
   const who = best && bd < 3 ? ` · ${S.roster.get(best[0]).name} (${teamName(S.roster.get(best[0]).team_id)})` : '';
   $('#readoutCap').textContent = `${Math.round(ax)} m towards goal, ${Math.round(ay)} m across (attacking frame)${who}`;
 }
-// the player the carry model treats as on the ball (v2), ringed in gold
+function frameScores(v) {
+  const I = S.integ[v][S.i], D = Dof(v, S.i);
+  $(`#readout td[data-k="${v}-I"]`).textContent = I == null ? '—' : I.toFixed(2);
+  $(`#readout td[data-k="${v}-D"]`).textContent = D == null ? '—' : D.toFixed(3);
+}
+// the player the carry model treats as on the ball (v3), ringed in gold
 function drawCarrier(ctx, p, fr) {
   const c = S.carrier[p.ver]?.[S.i], st = S.clip.states[S.i];
-  if (c == null || c < 0 || !st || S.layer === 'epv') return;
+  if (c == null || c < 0 || !st || S.layer === 'epv' || S.layer === 'danger') return;
   const q = fr.pl.find(r => r[0] === st.ids[c]); if (!q) return;
   const [x, y] = toPx(p, q[1], q[2]), r = Math.max(6, p.scale * 1.15);
   ctx.beginPath(); ctx.arc(x, y, r + Math.max(3, p.scale * 0.45), 0, 2 * Math.PI);
@@ -545,8 +615,9 @@ function renderLegend() {
     <span class="key"><span class="dot" style="background:var(--attack)"></span>attacking</span>
     <span class="key"><span class="dot" style="background:var(--defend)"></span>defending</span>
     ${keepNote}
+    ${S.layer === 'danger' ? `<span class="key"><span class="dot" style="background:rgba(215,48,39,.45)"></span>where each attacker will be in 1 s, sized by V × (1 − covered) · red ring = the most dangerous free attacker (= D) · blue dots = the defender assigned to them · backdrop = EPV, faded</span>` : ''}
     ${S.layer === 'integ' ? `<span class="key">grey = outside the zone · dashed line = zone starts 5 m behind the ball · faint = space worth little, counts less in I</span>` : ''}
-    ${S.layer !== 'epv' ? `<span class="key"><span class="dot" style="background:none;box-shadow:inset 0 0 0 2px #f2b705"></span>on the ball: the player whose carries v2 values</span>` : ''}
+    ${S.layer !== 'epv' && S.layer !== 'danger' ? `<span class="key"><span class="dot" style="background:none;box-shadow:inset 0 0 0 2px #f2b705"></span>on the ball: the player whose carries v3 values</span>` : ''}
     <span class="key">dashed ring = position estimated off camera · line = run over the next second</span>`;
   $('#lg').replaceWith(c);
 }

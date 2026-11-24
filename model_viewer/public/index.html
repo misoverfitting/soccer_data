@@ -10,7 +10,7 @@
 <header class="top">
   <div>
     <h1>Pitch Model Lab</h1>
-    <p class="sub">v0 vs v2 pitch control, EPV, carries and defensive integrity · SkillCorner open data, A-League 2024/25 · 10 Hz</p>
+    <p class="sub">v0, v2 and v3 pitch control, EPV, carries and defensive integrity · SkillCorner open data, A-League 2024/25 · 10 Hz</p>
   </div>
   <button id="aboutBtn" class="ghost" aria-expanded="false" aria-controls="about">About the models</button>
 </header>
@@ -22,29 +22,38 @@
     12 m/s lofted pass with 0.6 s hang time. The value of a spot is SkillCorner's possession EPV smoothed by location only.</p>
   </div>
   <div>
-    <h2>v2 · fitted settings, defensive-context value, carries</h2>
+    <h2>v2 · fitted settings, defensive-context value</h2>
     <p>The same pitch-control model with 10 settings fitted on 11,110 passes from 15 training matches
     (held-out AUC 0.885, calibrated). The value of a spot is the location value × a multiplier for the
     defensive situation there: how fast the nearest defender arrives, how close they are, and how many defenders are goal-side.
-    The player on the ball can also <b>carry</b> it: a survival model fitted on 5,797 training carries (held-out AUC 0.77,
-    on a par with SkillCorner's pressure tag) gives the chance of keeping it, P<sub>keep</sub>, on a straight run at 81% of top speed.</p>
+    Passes only.</p>
+    <h2>v3 · v2 plus carries</h2>
+    <p>The same as v2, but the player on the ball can also <b>carry</b> it: a survival model fitted on 5,797 training carries
+    (held-out AUC 0.77, on a par with SkillCorner's pressure tag) gives the chance of keeping it, P<sub>keep</sub>, on a straight
+    run at 81% of top speed.</p>
   </div>
   <div>
     <h2>Reading the layers</h2>
     <p><b>Pitch control</b>: chance the attacking team gets to the ball first (P<sub>att</sub>) or that a pass there is completed
-    (P<sub>succ</sub>, with interception along the path and the lofted option), or, in v2, that the player on the ball (gold ring)
+    (P<sub>succ</sub>, with interception along the path and the lofted option), or, in v3, that the player on the ball (gold ring)
     keeps it carrying it there (P<sub>keep</sub>). <b>EPV</b>: value of having the ball at each spot.
-    <b>Gain</b>: P·V − (1−P)·V<sub>opp</sub> − V(ball), what getting the ball there is worth: by a pass in v0, by the better of
-    a pass or a carry in v2. <b>Integrity</b>: how well the defence denies passes (and in v2 carries) into the space from 5 m behind
-    the ball to goal, I = Σ V·(1−P) / Σ V with P = P<sub>succ</sub> (v0) or max(P<sub>succ</sub>, P<sub>keep</sub>) (v2).
-    The map shows 1−P in that zone, faded where the space is worth little. Because v2 adds carries, v2 − v0 differences
-    mix the fitted settings with the carry option.
+    <b>Gain</b>: P·V − (1−P)·V<sub>opp</sub> − V(ball), what getting the ball there is worth: by a pass in v0 and v2, by the better
+    of a pass or a carry in v3. <b>Integrity</b>: how well the defence denies passes (and in v3 carries) into the space from 5 m behind
+    the ball to goal, I = Σ V·(1−P) / Σ V with P = P<sub>succ</sub> (v0, v2) or max(P<sub>succ</sub>, P<sub>keep</sub>) (v3).
+    The map shows 1−P in that zone, faded where the space is worth little.
+    <b>Danger</b> (notebook Section 8d): how dangerous the most dangerous attacker the defence has left free is. Each attacker
+    is projected 1 s ahead, each defender is assigned one attacker, and an attacker counts as covered if their defender gets
+    there within the ball's travel time + 1 s (half if not goal-side); D = the highest V × (1 − covered). Integrity says how
+    close the defence is to winning the ball back; danger says how dangerous the next actions get if it doesn't. The badge on
+    each pitch shows both. Danger is the same in v2 and v3: carries change the ball carrier's options, not who is free.
+    The two difference views separate the changes:
+    v2 − v0 is what fitting changed, v3 − v2 is what carries changed.
     Surfaces are always from the attacking team's point of view.</p>
   </div>
   <div>
     <h2>Caveats</h2>
     <p>No receiver is known on a free-playing frame, so run credit is not applied. Carries are straight runs projected from
-    one frame, and nobody can carry while the ball is in flight. The v2 value was fitted on possession-start
+    one frame, and nobody can carry while the ball is in flight. The v2/v3 value was fitted on possession-start
     points and is applied here to every cell. Five matches (marked held-out) were not used to fit anything.</p>
   </div>
 </section>
@@ -82,20 +91,23 @@
         <button data-v="epv" role="radio">EPV</button>
         <button data-v="gain" role="radio">Gain</button>
         <button data-v="integ" role="radio" title="How well the defence denies passes into the valuable space between the ball and goal">Integrity</button>
+        <button data-v="danger" role="radio" title="How dangerous the most dangerous attacker the defence has left free is, 1 s ahead">Danger</button>
       </div>
       <div class="seg" id="pcKind" role="radiogroup" aria-label="Pitch control measure">
         <button data-v="att" role="radio" title="Chance the attack reaches the ball first">P<sub>att</sub></button>
         <button data-v="succ" role="radio" title="Chance a pass there is completed">P<sub>succ</sub></button>
-        <button data-v="keep" role="radio" title="Chance the player on the ball keeps it carrying it there (v2 only)">P<sub>keep</sub></button>
+        <button data-v="keep" role="radio" title="Chance the player on the ball keeps it carrying it there (v3 only)">P<sub>keep</sub></button>
       </div>
       <div class="seg" id="view" role="radiogroup" aria-label="View">
         <button data-v="side" role="radio">Side by side</button>
         <button data-v="single" role="radio">Single</button>
-        <button data-v="diff" role="radio">v2 − v0</button>
+        <button data-v="diff" role="radio" title="What fitting the settings and the value changed">v2 − v0</button>
+        <button data-v="diff3" role="radio" title="What adding carries changed">v3 − v2</button>
       </div>
       <div class="seg" id="single" role="radiogroup" aria-label="Model in single view">
         <button data-v="v0" role="radio">v0</button>
         <button data-v="v2" role="radio">v2</button>
+        <button data-v="v3" role="radio">v3</button>
       </div>
     </div>
 
@@ -125,18 +137,19 @@
     </div>
     <div class="itrack" id="itrack" hidden>
       <div class="itrackHead">
-        <span><b>Integrity I over the clip</b> · 1 = every valuable pass (v2: or carry) towards goal denied</span>
-        <span class="key"><i class="ln v0"></i>v0</span><span class="key"><i class="ln v2"></i>v2</span>
+        <span id="itrackTitle"><b>Integrity I over the clip</b> · 1 = every valuable pass (v3: or carry) towards goal denied</span>
+        <span class="key"><i class="ln v0"></i>v0</span><span class="key"><i class="ln v2"></i>v2</span><span class="key"><i class="ln v3"></i>v3</span>
       </div>
       <canvas id="itrackCanvas" aria-label="Integrity of the defending team over the clip"></canvas>
     </div>
     <div class="status"><span id="status"></span><span id="progress"></span></div>
 
     <table class="readout" id="readout" aria-live="polite">
-      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v2 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th></tr></thead>
+      <thead><tr><th>At cursor</th><th>P<sub>att</sub></th><th>P<sub>succ</sub></th><th title="Chance of keeping the ball carrying it there (v3 only)">P<sub>keep</sub></th><th>V</th><th>Gain</th><th title="Integrity of the whole frame, not the cell">I (frame)</th><th title="Danger of the whole frame, not the cell">D (frame)</th></tr></thead>
       <tbody>
-        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td></tr>
-        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td></tr>
+        <tr><th>v0</th><td data-k="v0-0"></td><td data-k="v0-1"></td><td data-k="v0-5"></td><td data-k="v0-2"></td><td data-k="v0-3"></td><td data-k="v0-I"></td><td data-k="v0-D"></td></tr>
+        <tr><th>v2</th><td data-k="v2-0"></td><td data-k="v2-1"></td><td data-k="v2-5"></td><td data-k="v2-2"></td><td data-k="v2-3"></td><td data-k="v2-I"></td><td data-k="v2-D"></td></tr>
+        <tr><th>v3</th><td data-k="v3-0"></td><td data-k="v3-1"></td><td data-k="v3-5"></td><td data-k="v3-2"></td><td data-k="v3-3"></td><td data-k="v3-I"></td><td data-k="v3-D"></td></tr>
       </tbody>
       <caption id="readoutCap">Hover over a pitch</caption>
     </table>

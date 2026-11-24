@@ -28,6 +28,12 @@ os.chdir(ROOT / "notebooks")
 g = {}
 exec(compile("\n\n".join(code), "defensive_shape_integrity.ipynb", "exec"), g)
 
+# Section 8d's danger functions (free_attacker_danger, free_attacker_who), read from the notebook too
+d8 = next(c.source for c in nb.cells if c.cell_type == "code" and "def free_attacker_danger" in c.source)
+exec(compile(d8.split("def collect_danger")[0], "8d", "exec"), g)
+who8 = next(c.source for c in nb.cells if c.cell_type == "code" and "def free_attacker_who" in c.source)
+exec(compile(who8.split("goal_frames[")[0], "8d-who", "exec"), g)
+
 FITTED, DEFAULT, VM, CARRY = dict(g["SETTINGS"]), dict(g["DEFAULT_SETTINGS"]), g["VALUE_MODEL"], g["CARRY"]
 
 def use(settings, value_model, carry):
@@ -41,6 +47,7 @@ ev = g["events"]
 pp = ev[ev.event_type == "player_possession"].sort_values("frame_start")
 V_flat, CELLS = g["V_flat"], g["CELLS"]
 cases = []
+# v0: literature settings, passes · v2: fitted, passes · v3: fitted, passes and carries
 # 44209: Williams on the ball (carrier given) · 44245: Carluccio mid-carry · 44283: Risdon's one-touch cross
 # (carrier found by the 1.5 m rule, or none) · 12345: an ordinary frame
 for frame in [44209, 44245, 44283, 12345]:
@@ -52,11 +59,11 @@ for frame in [44209, 44245, 44283, 12345]:
     phys = g["PHYS"].loc[st.player_id]
     case = {"frame": frame, "team_id": int(row.team_id), "attacking_side": row.attacking_side, "ball": ball.round(6).tolist(),
             "carrier_id": on_ball,
-            "players": [{"id": int(r.player_id), "x": r.x, "y": r.y, "vx": r.vx, "vy": r.vy, "att": bool(r.attacking),
+            "players": [{"id": int(r.player_id), "x": r.x, "y": r.y, "vx": r.vx, "vy": r.vy, "att": bool(r.attacking), "gk": bool(r.gk),
                          "vmax": float(phys.loc[r.player_id, "vmax"]), "amax": float(phys.loc[r.player_id, "amax"])}
                         for r in st.itertuples()]}
     keep = np.arange(0, 7140, 7)
-    for name, settings, value_model, carry in [("v0", DEFAULT, None, None), ("v2", FITTED, VM, CARRY)]:
+    for name, settings, value_model, carry in [("v0", DEFAULT, None, None), ("v2", FITTED, VM, None), ("v3", FITTED, VM, CARRY)]:
         use(settings, value_model, carry)
         pc = g["pitch_control"](st, ball, carrier_id=on_ball)
         zone = CELLS[:, 0] >= ball[0] - 5
@@ -68,10 +75,14 @@ for frame in [44209, 44245, 44283, 12345]:
                       "gain": pc["gain"].ravel()[keep].round(7).tolist(),
                       "gain_pass": pc["gain_pass"].ravel()[keep].round(7).tolist(),
                       "v_ball": round(pc["v_ball"], 7), "integrity": round(integ, 7),
+                      "danger": round(g["free_attacker_danger"](st, ball, pc)["free_ctx_1s"], 8),
+                      "danger_who": int(st.player_id[st.name == g["free_attacker_who"](st, ball, pc)].iloc[0]),
                       "carrier_id": None if pc["carrier"] is None else int(st.player_id.iloc[pc["carrier"]])}
     cases.append(case)
-    print(frame, row.player_name, "| carrier", case["v2"]["carrier_id"], "| v2 max gain", round(max(case["v2"]["gain"]), 4),
-          "| max P_keep", round(max(case["v2"]["p_keep"]), 3), "| I v0", round(case["v0"]["integrity"], 3), "v2", round(case["v2"]["integrity"], 3))
+    print(frame, row.player_name, "| carrier", case["v3"]["carrier_id"], "| v3 max gain", round(max(case["v3"]["gain"]), 4),
+          "| max P_keep", round(max(case["v3"]["p_keep"]), 3), "| I v0", round(case["v0"]["integrity"], 3),
+          "v2", round(case["v2"]["integrity"], 3), "v3", round(case["v3"]["integrity"], 3),
+          "| danger v0", round(case["v0"]["danger"], 4), "v2", round(case["v2"]["danger"], 4), "v3", round(case["v3"]["danger"], 4))
 use(FITTED, VM, CARRY)
 out = ROOT / "model_viewer" / "test" / "fixtures.json"
 out.parent.mkdir(exist_ok=True)

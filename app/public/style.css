@@ -162,3 +162,10 @@ body.pitch-focus{overflow:hidden}
 #optimizerCharts h2{margin:0 0 4px}
 #optimizerCharts canvas{height:145px;aspect-ratio:auto;cursor:default}
 @media(max-width:900px){.optimizer-view #meshControls,#optimizerCharts{grid-column:1/-1}}
+
+@media(min-width:901px){
+ .optimizer-view main{--optimizer-charts-min:275px;grid-template-columns:minmax(var(--optimizer-charts-min),1fr) minmax(0,var(--optimizer-viewer-width,1fr));column-gap:20px;padding-right:clamp(12px,1.5vw,24px)}
+ .optimizer-view .transport{min-height:104px;align-content:center}
+ .optimizer-view #optimizerCharts{padding:16px 18px 10px}
+ .optimizer-view #optimizerCharts canvas{height:clamp(145px,19vh,205px)}
+}

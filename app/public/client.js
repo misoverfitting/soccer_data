@@ -1,6 +1,6 @@
 import {clipSamples, summarizePath, pathFormation, drawPathChart, distanceThreshold} from './optimizer-path.js';
 import {optimizerSnapshot} from './optimizer-scene.js';
-import {playbackPitchHeight} from './layout.js';
+import {playbackPitchHeight, optimizerPitchWidth} from './layout.js';
 import {SETTING_HELP,settingHelp} from './settings-help.js';
 import {buildIntegrity,integrityColour} from './integrity.js';
 import {PassPlayback,passOverlayOpacity} from './pass-playback.js';
@@ -156,14 +156,27 @@ function fitPlaybackViewport(){
  if(!canvas.parentElement||!Number.isFinite(window.innerHeight))return;
  if(document.body.classList.contains('pitch-focus')){canvas.style.height='';return;}
  const pitch=canvas.parentElement,transport=$('play').closest('.transport'),style=getComputedStyle(transport);
+ const mobile=window.matchMedia('(max-width: 900px)').matches;
+ const optimizerLayout=currentView==='optimizer'&&meta&&!mobile;
+ const main=pitch.closest('main');
+ let canvasWidth=canvas.getBoundingClientRect().width;
+ if(optimizerLayout){
+  const gridStyle=getComputedStyle(main);
+  canvasWidth=main.clientWidth-parseFloat(gridStyle.paddingLeft)-parseFloat(gridStyle.paddingRight)
+   -parseFloat(gridStyle.columnGap)-parseFloat(gridStyle.getPropertyValue('--optimizer-charts-min'))-2;
+ }
  const height=playbackPitchHeight({
   viewportHeight:window.visualViewport?.height??document.documentElement.clientHeight,
-  pitchWidth:canvas.getBoundingClientRect().width,
+  pitchWidth:canvasWidth,
   pitchTop:Math.max(0,pitch.getBoundingClientRect().top+window.scrollY),
   controlsHeight:transport.getBoundingClientRect().height,
   controlsMargins:(parseFloat(style.marginTop)||0)+(parseFloat(style.marginBottom)||0),
-  mobile:window.matchMedia('(max-width: 900px)').matches
+  mobile
  });
+ if(optimizerLayout){
+  const width=optimizerPitchWidth(canvasWidth,height,meta.pitch_length,meta.pitch_width);
+  main.style.setProperty('--optimizer-viewer-width',`${Math.max(0,width+2)}px`);
+ }
  if(canvas.style.height!==`${height}px`)canvas.style.height=`${height}px`;
 }
 function revealPlayback(behavior='instant'){
@@ -355,7 +368,7 @@ function draw(){
  const hideOptimizer=currentView!=='optimizer'||!frames.length;
  if (hideOptimizer) $('optimizerCharts').hidden = true;
  $('optimizerControls').hidden=hideOptimizer||(playing&&!clipOptimizer?.worker);
- fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
+ fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
  const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
  const optimizerTeam=snapshot?.team==null?'unknown':String(snapshot.team);

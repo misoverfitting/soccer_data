@@ -146,6 +146,36 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     defenders: layout.map((p, i) => ({ id: defenders[i].id ?? i + 1, ...p })),
   });
 
+  function coordinatedMove(layout, value, sign) {
+    const alternatives = reachable.map((points, index) => {
+      if (!points || points.length < 2) return [];
+      return points.filter(point => distance(point, layout[index]) > 0).map(point => {
+        const candidate = layout.slice();
+        candidate[index] = point;
+        // Keep promising moves even if they only work once a teammate moves too.
+        return { point, value: score(candidate, coarse) };
+      }).sort((a, b) => sign * (b.value - a.value)).slice(0, 2);
+    });
+    let best = { layout, value };
+    for (let first = 0; first < alternatives.length; first++) {
+      for (let second = first + 1; second < alternatives.length; second++) {
+        for (const a of alternatives[first]) {
+          for (const b of alternatives[second]) {
+            const candidate = layout.slice();
+            candidate[first] = a.point;
+            candidate[second] = b.point;
+            if (!spaced(a.point, candidate, first) || !spaced(b.point, candidate, second)) continue;
+            const jointValue = score(candidate, coarse);
+            if (sign * (jointValue - best.value) > 1e-12) best = { layout: candidate, value: jointValue };
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  const constrainedSearch = reachable.some(Boolean);
+
   function search(sign) {
     let best = scoredStarts[0].layout;
     let bestValue = scoredStarts[0].value;
@@ -157,7 +187,7 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
       }
       let layout = start.slice();
       let value = score(layout, coarse);
-      for (const step of reachable.some(Boolean) ? [1] : [12, 6, 3, 1]) {
+      for (const step of constrainedSearch ? [1] : [12, 6, 3, 1]) {
         for (let sweep = 0; sweep < 2; sweep++) {
           let changed = false;
           for (let i = 0; i < layout.length; i++) {
@@ -181,7 +211,17 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
           if (!changed) break;
         }
       }
-      const finalValue = useFinal ? value : score(layout, finalPoints);
+      let finalValue = useFinal ? value : score(layout, finalPoints);
+      if (constrainedSearch) {
+        const joint = coordinatedMove(layout, value, sign);
+        if (joint.layout !== layout) {
+          const jointValue = useFinal ? joint.value : score(joint.layout, finalPoints);
+          if (improves(jointValue, finalValue)) {
+            layout = joint.layout;
+            finalValue = jointValue;
+          }
+        }
+      }
       if (improves(finalValue, bestValue)) {
         best = layout;
         bestValue = finalValue;

@@ -122,6 +122,7 @@ under **Settings**. Pause or scrub to a frame and click **Find Optimum**.
 The pitch shows the tracked attack and ball, then adds the optimized defense
 as gold rings. The goalkeeper appears at their tracked position after the search
 and stays fixed while the outfield defenders are optimized. The view
-maximizes Integrity or EPV and minimizes Danger. Changing the frame or metric
+maximizes Integrity and minimizes Danger or the attacking team's EPV at the ball.
+Changing the frame or metric
 clears the result. The browser worker uses the selected frame's tracked
 players and the match's fitted physical profiles when available.

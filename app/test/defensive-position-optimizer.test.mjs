@@ -51,12 +51,12 @@ for (const metric of ['Integrity', 'Danger', 'EPV']) {
   });
 }
 
-test('optimizer worker minimizes Danger and maximizes Integrity and EPV', async () => {
+test('optimizer worker minimizes Danger and EPV and maximizes Integrity', async () => {
   let message;
   globalThis.self = { postMessage: value => { message = value; } };
   try {
     await import('../public/optimizer-worker.js');
-    for (const [metric, direction] of [['danger', 'minimum'], ['integrity', 'maximum'], ['epv', 'maximum']]) {
+    for (const [metric, direction] of [['danger', 'minimum'], ['integrity', 'maximum'], ['epv', 'minimum']]) {
       const fixedKeeper = { id: 'GK', bounds: { minX: -5, maxX: -5, minY: 2, maxY: 2 } };
       const scene = {
         metric, attackers, defenders: [fixedKeeper, { id: 'CB' }], ball: attackers[0], attackDirection: 'left',

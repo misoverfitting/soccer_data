@@ -1,4 +1,4 @@
-import {clipSamples, summarizePath, pathFormation, drawPathChart, distanceLabel, distanceThreshold} from './optimizer-path.js';
+import {clipSamples, summarizePath, pathFormation, drawPathChart, distanceThreshold} from './optimizer-path.js';
 import {optimizerSnapshot} from './optimizer-scene.js';
 import {playbackPitchHeight} from './layout.js';
 import {SETTING_HELP,settingHelp} from './settings-help.js';
@@ -269,10 +269,9 @@ function renderOptimizerPath(frame, metric) {
  drawPathChart($('optimizerOffsetChart'), path, elapsed, 'Distance from optimum', {
   field:'offset', countLabel:offsetLabel,
  });
- $('optimizerMovementCount').textContent = distanceLabel(elapsed, path[elapsed].movement, movementLabel);
- $('optimizerOffsetCount').textContent = distanceLabel(elapsed, path[elapsed].offset, offsetLabel);
- $('optimizerOffsetThreshold').textContent =
-  `Green means no defenders were more than ${distanceThreshold} m from optimum. Red means all were. Gray marks unavailable comparisons.`;
+ drawPathChart($('optimizerAlignmentChart'), path, elapsed, 'Movement toward optimum', {
+  alignment:true, secondsLabel:true,
+ });
 }
 
 function clearOptimizer() {

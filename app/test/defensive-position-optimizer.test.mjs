@@ -103,3 +103,19 @@ test('clip movement compares the same outfield players and interpolates by track
   });
   assert.equal(pathFormation(path, { frame: 55, period: 1 }, samples[2]), null);
 });
+
+test('alignment measures last-second tracked motion toward the current optimum', () => {
+  const keeper = { id: 'GK' };
+  const optimum = { id: 'CB', x: 10, y: 0 };
+  const priorTracked = new Map([['CB', { x: 0, y: 0 }]]);
+  const result = { defenders: [keeper, optimum] };
+  for (const [x, y, expected] of [[2, 0, 1], [-2, 0, 0], [0, 2, 0.5], [0, 0, 0.5]]) {
+    const tracked = new Map([['CB', { x, y }]]);
+    const [sample] = summarizePath([{ keeper, tracked, priorTracked }], [result]);
+    assert.equal(sample.alignment, expected);
+  }
+  const tracked = new Map([['CB', { x: 2, y: 0 }]]);
+  assert.equal(summarizePath([{ keeper, tracked }], [result])[0].alignment, null);
+  const atTarget = new Map([['CB', optimum]]);
+  assert.equal(summarizePath([{ keeper, tracked, priorTracked: atTarget }], [result])[0].alignment, null);
+});

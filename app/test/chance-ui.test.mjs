@@ -135,7 +135,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('scrub').value=playable*10;
  element('scrub').oninput();
  assert.match(element('optimizerOffsetChart')['aria-label'], /Distance from optimum/);
- assert.match(element('optimizerOffsetCount').textContent, /defenders were more than 5 m/);
+ assert.match(element('optimizerAlignmentChart')['aria-label'], /Movement toward optimum/);
  const beforePlayback=paint.length;
  element('play').onclick();
  assert.equal(element('optimizerCharts').hidden,false);

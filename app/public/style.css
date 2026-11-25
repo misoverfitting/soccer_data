@@ -149,3 +149,7 @@ body.pitch-focus{overflow:hidden}
 .optimizer-view #clipDetails article,
 .optimizer-view #estimateLegend{display:none}
 @media(max-width:350px){.view-toggle button{padding-inline:7px}}
+
+.optimizer-action{position:relative}
+#optimumTooltip{display:none;position:absolute;bottom:calc(100% + 8px);left:0;z-index:5;width:min(280px,78vw);padding:10px 12px;border:1px solid #46616a;border-radius:8px;background:#142128;color:#e1ecee;font-size:12px;line-height:1.5}
+.optimizer-action:hover #optimumTooltip,.optimizer-action:focus-within #optimumTooltip{display:block}

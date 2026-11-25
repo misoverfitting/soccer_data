@@ -206,7 +206,7 @@ function optimizerControls(frame, snapshot) {
  const result = optimizerState?.result;
  const label = {integrity:'Integrity',danger:'Danger',epv:'EPV'}[metric];
  $('optimizerStatus').textContent = optimizerState?.worker ? 'Searching defensive positions…'
-   : optimizerState?.error ?? (result ? label + ' ' + result.value.toFixed(3) + ' · ' + result.defenders.length + ' optimized defenders'
+   : optimizerState?.error ?? (result ? label + ' ' + result.value.toFixed(3) + ' · ' + (result.defenders.length - 1) + ' optimized outfield defenders'
      : snapshot.reason ?? (!passingData?.valueModel ? 'Fitted model unavailable.' : ''));
  return playing ? null : result;
 }
@@ -240,17 +240,20 @@ $('findOptimum').onclick = () => {
 $('optimizerMetric').onchange = () => { clearOptimizer(); draw(); };
 
 function drawOptimizedDefenders(result, keeper, px, scale) {
- for (const p of result?.defenders ?? []) {
+ if (!result) return;
+ const outfield = result.defenders.filter(p => p.id !== keeper.id);
+ for (const p of [...outfield, keeper]) {
+  const isKeeper = p.id === keeper.id;
   const [x,y] = px(p.x,p.y);
-  const label = p.id === keeper ? 'GK' : meta.players.find(player=>player.id===p.id)?.number ?? '';
+  const label = isKeeper ? 'GK' : meta.players.find(player=>player.id===p.id)?.number ?? '';
   ctx.beginPath();
   ctx.arc(x,y,Math.max(7,scale*1.25),0,Math.PI*2);
   ctx.fillStyle = '#281f13';
   ctx.fill();
-  ctx.strokeStyle = '#ffcf79';
+  ctx.strokeStyle = isKeeper ? '#b6e8ff' : '#ffcf79';
   ctx.lineWidth = 2;
   ctx.stroke();
-  ctx.fillStyle = '#ffdf9e';
+  ctx.fillStyle = isKeeper ? '#b6e8ff' : '#ffdf9e';
   ctx.font = 'bold 9px system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -319,7 +322,7 @@ function draw(){
  vertices(f,meta,{team:isOptimizer?optimizerTeam:isIntegrity?'all':$('team').value,ball:true,detectedOnly:!isOptimizer&&$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');if(ball){drawSoccerBall(...px(p.x,p.y),dangerColour(danger?.current),p.is_detected);return;}ctx.beginPath();ctx.arc(...px(p.x,p.y),Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=teamColour(p.team);ctx.fill();const showEstimate=!isOptimizer&&!p.is_detected&&$('showEstimates').checked;ctx.strokeStyle=showEstimate?'#ffcc81':'#102321';ctx.setLineDash(showEstimate?[2,2]:[]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
  if(isOptimizer){
   drawOptimizedDefenders(optimizerControls(f,snapshot),snapshot.keeper,px,scale);
-  $('teamLegend').textContent='Tracked attackers · gold rings = optimized defenders';
+  $('teamLegend').textContent='Tracked attackers · gold rings = optimized defenders · GK = tracked goalkeeper';
   $('fillLegend').textContent='';
  }else drawPassAdvice(px);
  $('estimateLegend').hidden=!$('showEstimates').checked;

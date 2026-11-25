@@ -94,12 +94,12 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.equal(job.data.scene.metric,'danger');
  const keeper=job.data.scene.defenders.find(p=>p.bounds);
  assert.ok(keeper);
- assert.equal(keeper.bounds.maxX-keeper.bounds.minX,16.5);
- assert.equal(keeper.bounds.maxY,20.16);
- const x=(keeper.bounds.minX+keeper.bounds.maxX)/2;
- job.onmessage({data:{result:{value:0.125,defenders:[{id:keeper.id,x,y:0}]}}});
+ const tracked=demo.frames[Number(element('scrub').value)].player_data.find(p=>p.player_id===keeper.id);
+ assert.deepEqual(keeper.bounds,{minX:tracked.x,maxX:tracked.x,minY:tracked.y,maxY:tracked.y});
+ const beforeResult=paint.length;
+ job.onmessage({data:{result:{value:0.125,defenders:[{id:keeper.id,x:tracked.x,y:tracked.y}]}}});
  assert.match(element('optimizerStatus').textContent,/Danger 0.125/);
- assert.ok(paint.some(c=>c.name==='fillText'&&c.args[0]==='GK'));
+ assert.ok(paint.slice(beforeResult).some(c=>c.name==='fillText'&&c.args[0]==='GK'));
  element('findOptimum').onclick();
  const pending=jobs.at(-1);
  element('optimizerMetric').value='integrity';

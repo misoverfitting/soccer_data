@@ -57,12 +57,14 @@ test('optimizer worker minimizes Danger and maximizes Integrity and EPV', async 
   try {
     await import('../public/optimizer-worker.js');
     for (const [metric, direction] of [['danger', 'minimum'], ['integrity', 'maximum'], ['epv', 'maximum']]) {
+      const fixedKeeper = { id: 'GK', bounds: { minX: -5, maxX: -5, minY: 2, maxY: 2 } };
       const scene = {
-        metric, attackers, defenders, ball: attackers[0], attackDirection: 'left',
+        metric, attackers, defenders: [fixedKeeper, { id: 'CB' }], ball: attackers[0], attackDirection: 'left',
         pitchLength: 50, pitchWidth: 30, restarts: 1,
       };
       self.onmessage({ data: { scene, fitted } });
       assert.deepEqual(message, { result: optimizeDefense(scene, fitted)[direction] });
+      assert.deepEqual(message.result.defenders[0], { id: 'GK', x: -5, y: 2 });
     }
   } finally {
     delete globalThis.self;

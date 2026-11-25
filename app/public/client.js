@@ -1,3 +1,4 @@
+import {optimizerSnapshot} from './optimizer-scene.js';
 import {playbackPitchHeight} from './layout.js';
 import {SETTING_HELP,settingHelp} from './settings-help.js';
 import {buildIntegrity,integrityColour} from './integrity.js';
@@ -189,17 +190,93 @@ function drawSoccerBall(x,y,tint,detected){
  if(!detected&&$('showEstimates').checked){ctx.beginPath();ctx.arc(0,0,r+1.8,0,Math.PI*2);ctx.strokeStyle='#ffcc81';ctx.lineWidth=.8;ctx.setLineDash([2,2]);ctx.stroke();}
  ctx.restore();
 }
-function draw(){fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
- ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',points=vertices(f,meta,{team:$('team').value,ball:$('ball').checked,detectedOnly:$('detected').checked});
+let optimizerState = null;
+
+function clearOptimizer() {
+ optimizerState?.worker?.terminate();
+ optimizerState = null;
+}
+
+function optimizerControls(frame, snapshot) {
+ const metric = $('optimizerMetric').value;
+ if (optimizerState && (playing || optimizerState.frame !== frame || optimizerState.metric !== metric
+     || optimizerState.request !== request)) clearOptimizer();
+ $('optimizerControls').hidden = playing;
+ $('findOptimum').disabled = Boolean(snapshot.reason || !passingData?.valueModel || optimizerState?.worker);
+ const result = optimizerState?.result;
+ const label = {integrity:'Integrity',danger:'Danger',epv:'EPV'}[metric];
+ $('optimizerStatus').textContent = optimizerState?.worker ? 'Searching defensive positions…'
+   : optimizerState?.error ?? (result ? label + ' ' + result.value.toFixed(3) + ' · ' + result.defenders.length + ' optimized defenders'
+     : snapshot.reason ?? (!passingData?.valueModel ? 'Fitted model unavailable.' : ''));
+ return playing ? null : result;
+}
+
+$('findOptimum').onclick = () => {
+ const frame = frames[index];
+ if (currentView !== 'optimizer' || !frame || playing || $('findOptimum').disabled) return;
+ const snapshot = optimizerSnapshot(frames, index, meta, passingData?.physical);
+ if (!snapshot.scene || !passingData?.valueModel) return;
+ clearOptimizer();
+ const state = optimizerState = {frame, metric:$('optimizerMetric').value, request};
+ try {
+  const worker = state.worker = new Worker('/optimizer-worker.js', {type:'module'});
+  const finish = ({result, error}) => {
+   if (optimizerState !== state) return;
+   worker.terminate();
+   Object.assign(state, {worker:null, result, error});
+   draw();
+  };
+  worker.onmessage = event => finish(event.data);
+  worker.onerror = () => finish({error:'The optimizer could not run.'});
+  worker.postMessage({scene:{...snapshot.scene, metric:state.metric}, fitted:{
+   settings:passingData.settings, valueModel:passingData.valueModel,
+  }});
+ } catch (error) {
+  state.worker?.terminate();
+  Object.assign(state, {worker:null, error:error.message});
+ }
+ draw();
+};
+$('optimizerMetric').onchange = () => { clearOptimizer(); draw(); };
+
+function drawOptimizedDefenders(result, keeper, px, scale) {
+ for (const p of result?.defenders ?? []) {
+  const [x,y] = px(p.x,p.y);
+  const label = p.id === keeper ? 'GK' : meta.players.find(player=>player.id===p.id)?.number ?? '';
+  ctx.beginPath();
+  ctx.arc(x,y,Math.max(7,scale*1.25),0,Math.PI*2);
+  ctx.fillStyle = '#281f13';
+  ctx.fill();
+  ctx.strokeStyle = '#ffcf79';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = '#ffdf9e';
+  ctx.font = 'bold 9px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label,x,y);
+ }
+}
+
+function draw(){
+ const hideOptimizer=currentView!=='optimizer'||playing||!frames.length;
+ $('optimizerControls').hidden=hideOptimizer;
+ fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
+ ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
+ const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
+ const optimizerTeam=snapshot?.team==null?'unknown':String(snapshot.team);
+ const points=vertices(f,meta,{team:isOptimizer?optimizerTeam:$('team').value,ball:isOptimizer||$('ball').checked,detectedOnly:!isOptimizer&&$('detected').checked});
+ let danger,holdLabel='';
+ if(!isOptimizer){
  const source=possessionSource(frames,index),calculationIndex=source.index??index;
  const calculationFrame=frames[calculationIndex];
- let danger=buildDanger(calculationFrame,frames[calculationIndex-1],meta);
+ danger=buildDanger(calculationFrame,frames[calculationIndex-1],meta);
  let access=buildAccess(calculationFrame,frames[calculationIndex-1],meta);
  if(source.index==null){danger={...danger,current:null,potential:()=>null,knownPossession:false};access={...access,reason:source.reason,at:()=>({score:null}),triangle:()=>({score:null,pass:null,carry:null,reason:source.reason})};}
  // Hold scores at their last known geometry while player/ball markers keep moving.
  const heldSites=new Map(source.heldFrames?vertices(calculationFrame,meta,{ball:true}).flatMap(p=>p.members.map(m=>[m.id,p])):[]);
  const scoringSite=p=>source.heldFrames?heldSites.get(p.id)??p:p;
- const holdLabel=source.heldFrames?` · held during transit (${source.heldFrames}/${POSSESSION_HOLD_FRAMES} frames)` : '';
+ holdLabel=source.heldFrames?` · held during transit (${source.heldFrames}/${POSSESSION_HOLD_FRAMES} frames)` : '';
  $('danger').textContent=danger.current==null?'Unavailable':danger.current.toFixed(3);
  $('dangerTeams').textContent=danger.left?('−1 Blue: '+danger.left.name+' (attacks →) | +1 Red: '+danger.right.name+' (attacks ←)'):'Attacking directions unavailable';
  $('teamLegend').textContent=danger.left?('● Blue: '+danger.left.name+' · ● Red: '+danger.right.name):'Team directions unavailable';
@@ -237,9 +314,14 @@ function draw(){fitPlaybackViewport();if(!meta||!frames.length)return;const rect
    ctx.strokeStyle='#d0ff85';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();
   }
  }
+ }
  ctx.globalAlpha=1;ctx.setLineDash([]);ctx.strokeStyle='#6c9690';ctx.lineWidth=1;ctx.strokeRect(...px(-L/2,W/2),L*scale,W*scale);ctx.beginPath();ctx.moveTo(...px(0,-W/2));ctx.lineTo(...px(0,W/2));ctx.stroke();ctx.beginPath();ctx.arc(...px(0,0),9.15*scale,0,Math.PI*2);ctx.stroke();for(const side of [-1,1]){const x=side<0?-L/2:L/2-16.5;ctx.strokeRect(...px(x,20.16),16.5*scale,40.32*scale);const gx=side<0?-L/2:L/2-5.5;ctx.strokeRect(...px(gx,9.16),5.5*scale,18.32*scale);}
- vertices(f,meta,{team:isIntegrity?'all':$('team').value,ball:true,detectedOnly:$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');if(ball){drawSoccerBall(...px(p.x,p.y),dangerColour(danger.current),p.is_detected);return;}ctx.beginPath();ctx.arc(...px(p.x,p.y),Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=teamColour(p.team);ctx.fill();const showEstimate=!p.is_detected&&$('showEstimates').checked;ctx.strokeStyle=showEstimate?'#ffcc81':'#102321';ctx.setLineDash(showEstimate?[2,2]:[]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
- drawPassAdvice(px);
+ vertices(f,meta,{team:isOptimizer?optimizerTeam:isIntegrity?'all':$('team').value,ball:true,detectedOnly:!isOptimizer&&$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');if(ball){drawSoccerBall(...px(p.x,p.y),dangerColour(danger?.current),p.is_detected);return;}ctx.beginPath();ctx.arc(...px(p.x,p.y),Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=teamColour(p.team);ctx.fill();const showEstimate=!isOptimizer&&!p.is_detected&&$('showEstimates').checked;ctx.strokeStyle=showEstimate?'#ffcc81':'#102321';ctx.setLineDash(showEstimate?[2,2]:[]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
+ if(isOptimizer){
+  drawOptimizedDefenders(optimizerControls(f,snapshot),snapshot.keeper,px,scale);
+  $('teamLegend').textContent='Tracked attackers · gold rings = optimized defenders';
+  $('fillLegend').textContent='';
+ }else drawPassAdvice(px);
  $('estimateLegend').hidden=!$('showEstimates').checked;
  $('jumpShot').hidden=!loadedChance;
  if(loadedChance){const seconds=(f.frame-loadedChance.anchorFrame)/10;$('chanceStage').textContent=`${loadedChance.outcome==='goal'?'Confirmed goal':'Recorded shot'} at ${loadedChance.time} · ${seconds<0?Math.abs(seconds).toFixed(1)+' s before marker':seconds.toFixed(1)+' s after marker'} · ${loadedChance.team}`;}else $('chanceStage').textContent='';
@@ -271,7 +353,7 @@ function positionTilePopup(t){
  popup.style.setProperty('--anchor-x',`${Math.max(16,Math.min(size.width-16,x-left))}px`);
 }
 function selectTriangle(clientX,clientY){
- if(!transform||currentView==='integrity'||$('mode').value!=='triangles')return;
+ if(!transform||currentView!=='tiling'||$('mode').value!=='triangles')return;
  const r=canvas.getBoundingClientRect(),p={x:(clientX-r.left-transform.ox)/transform.scale,y:-(clientY-r.top-transform.oy)/transform.scale};
  if(Math.abs(p.x)>meta.pitch_length/2||Math.abs(p.y)>meta.pitch_width/2)return;
  const hit=triangles.find(t=>inside(p,...t.vs));if(!hit)return;
@@ -334,10 +416,11 @@ function tick(now){
    const dt=100/Number($('speed').value);
    if(now-last>=dt){
     const proposed=Math.min(frames.length-1,index+Math.floor((now-last)/dt));
-    const next=passPlayback.advance(index,proposed,frames,passingData?.passes??[],now);
-    index=next.index;last=now;draw();
+    const next=currentView==='optimizer'?{index:proposed,waiting:false}:passPlayback.advance(index,proposed,frames,passingData?.passes??[],now);
+    index=next.index;last=now;
     if(next.waiting)passPlayback.until=performance.now()+1000;
     if(index===frames.length-1&&!next.waiting){playing=false;$('play').textContent='▶ Replay';}
+    draw();
    }
   }
  }
@@ -347,18 +430,38 @@ requestAnimationFrame(tick);window.addEventListener('resize',draw);
 let tilingHalos=true,integrityHalos=false;
 function setViewMode(value){
  if(currentView===value)return;
- closeSettingHelp();currentView=value;
- const enabled=currentView==='integrity';
- $('viewTiling').setAttribute('aria-pressed',String(!enabled));$('viewIntegrity').setAttribute('aria-pressed',String(enabled));
- $('help-viewIntegrity').hidden=!enabled;
- if(enabled){tilingHalos=$('showReceiving').checked;$('showReceiving').checked=integrityHalos;}else{integrityHalos=$('showReceiving').checked;$('showReceiving').checked=tilingHalos;}
- document.body.classList.toggle('integrity-view',enabled);
- $('tilingSettings').hidden=enabled;$('integritySettings').hidden=!enabled;selected=null;
- $('inspectorTitle').textContent=enabled?'Defensive integrity diagnostics':'Tile inspector';
+ closeSettingHelp();
+ clearOptimizer();
+ resetPassAdvice();
+ if(currentView==='tiling')tilingHalos=$('showReceiving').checked;
+ if(currentView==='integrity')integrityHalos=$('showReceiving').checked;
+ currentView=value;
+ const integrity=value==='integrity', optimizer=value==='optimizer';
+ $('viewTiling').setAttribute('aria-pressed',String(value==='tiling'));
+ $('viewIntegrity').setAttribute('aria-pressed',String(integrity));
+ $('viewOptimizer').setAttribute('aria-pressed',String(optimizer));
+ $('help-viewIntegrity').hidden=!integrity;
+ if(!optimizer)$('showReceiving').checked=integrity?integrityHalos:tilingHalos;
+ document.body.classList.toggle('integrity-view',integrity);
+ document.body.classList.toggle('optimizer-view',optimizer);
+ $('meshSummary').textContent=optimizer?'Settings':'Mesh & colour settings';
+ $('meshOptions').hidden=optimizer;
+ $('optimizerSettings').hidden=!optimizer;
+ $('optimizerControls').hidden=!optimizer||playing||!frames.length;
+ $('tilingSettings').hidden=value!=='tiling';
+ $('integritySettings').hidden=!integrity;
+ $('toggleDanger').disabled=optimizer;
+ $('dangerPanel').hidden=true;
+ $('toggleDanger').setAttribute('aria-expanded','false');
+ canvas.setAttribute('aria-label',optimizer?'Pitch showing the attack and any optimized defensive positions':'Interactive pitch: click a triangle to inspect its vertices and area');
+ selected=null;
+ $('inspectorTitle').textContent=integrity?'Defensive integrity diagnostics':'Tile inspector';
+ $('inspect').textContent='Pause and click a triangle to inspect it.';
  draw();
 };
 $('viewTiling').onclick=()=>setViewMode('tiling');
 $('viewIntegrity').onclick=()=>setViewMode('integrity');
+$('viewOptimizer').onclick=()=>setViewMode('optimizer');
 for(const id of ['integrityColour','legacyDanger','integrityTiles','integrityConnections','integrityMarking','integrityFacing'])$(id).onchange=()=>{$('legacySetting').hidden=$('integrityColour').value!=='danger';draw();};
 async function startup(){
  let expected=++request;

@@ -133,3 +133,19 @@ body.pitch-focus{overflow:hidden}
 /* Centre within the actual title-to-clock gap, with a 25% smaller control. */
 .match-header{grid-template-columns:minmax(0,max-content) minmax(max-content,1fr) max-content}
 #focusPitch{transform:scale(.75);transform-origin:center}
+
+#optimizerControls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;grid-column:1/-1;order:1}
+#findOptimum{width:auto;min-height:40px;margin:0}
+#optimizerStatus{color:#afc4ca;font-size:12px}
+#findOptimum:disabled{opacity:.55;cursor:default}
+.optimizer-view .transport{flex-wrap:wrap}
+.optimizer-view .transport>input{flex:1;min-width:0}
+.optimizer-view #optimizerControls{flex-basis:100%}
+.optimizer-view canvas{cursor:default}
+.optimizer-view #toggleDanger:disabled{cursor:default;opacity:1}
+.optimizer-view .disclosure-triangle,
+.optimizer-view .tiling-edge-legend,
+.optimizer-view #clipDetails .legend span:nth-child(2),
+.optimizer-view #clipDetails article,
+.optimizer-view #estimateLegend{display:none}
+@media(max-width:350px){.view-toggle button{padding-inline:7px}}

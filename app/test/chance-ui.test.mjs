@@ -1,3 +1,4 @@
+import * as optimizerPath from '../public/optimizer-path.js';
 import * as optimizer from '../public/optimizer-scene.js';
 import * as layout from '../public/layout.js';
 import * as help from '../public/settings-help.js';
@@ -19,9 +20,9 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  const requests=[],els=new Map(),classes=new Set(),events=new Map();
  const paint=[];
  const context2d=new Proxy({},{get:(_,name)=>(...args)=>paint.push({name,args})});
- const element=id=>{if(!els.has(id)){const e={id,style:{setProperty(){}},listeners:new Map(),classList:{toggle(){}},value:({viewMode:'tiling',integrityColour:'control',mode:'triangles',team:'all',colour:'danger',duration:'30',speed:'1',chanceFilter:'high',start:'10'})[id]??'',checked:['ball','showReceiving'].includes(id),options:[],textContent:'',hidden:false,disabled:false,addEventListener(k,fn){this.listeners.set(k,fn);},getBoundingClientRect(){return mobile?{width:390,height:260,left:0,top:0}:{width:1000,height:625,left:0,top:0};},getContext(){return context2d;},scrollIntoView(){this.scrolled=true;},matches(selector){return selector===':popover-open'?!!this.popOpen:false;},showPopover(){this.popOpen=true;},hidePopover(){this.popOpen=false;},show(){this.open=true;},showModal(){this.open=true;},close(){this.open=false;},getAttribute(k){return this[k]??null;},setAttribute(k,v){this[k]=v;},add(o){this.options.push(o);},replaceChildren(...options){this.options=options;this.value=options[0]?.value??'';}};Object.defineProperty(e,'selectedOptions',{get:()=>e.options.filter(o=>o.value===e.value)});els.set(id,e);}return els.get(id);};
+ const element=id=>{if(!els.has(id)){const e={id,clientWidth:240,clientHeight:145,style:{setProperty(){}},listeners:new Map(),classList:{toggle(){}},value:({viewMode:'tiling',integrityColour:'control',mode:'triangles',team:'all',colour:'danger',duration:'30',speed:'1',chanceFilter:'high',start:'10'})[id]??'',checked:['ball','showReceiving'].includes(id),options:[],textContent:'',hidden:false,disabled:false,addEventListener(k,fn){this.listeners.set(k,fn);},getBoundingClientRect(){return mobile?{width:390,height:260,left:0,top:0}:{width:1000,height:625,left:0,top:0};},getContext(){return context2d;},scrollIntoView(){this.scrolled=true;},matches(selector){return selector===':popover-open'?!!this.popOpen:false;},showPopover(){this.popOpen=true;},hidePopover(){this.popOpen=false;},show(){this.open=true;},showModal(){this.open=true;},close(){this.open=false;},getAttribute(k){return this[k]??null;},setAttribute(k,v){this[k]=v;},add(o){this.options.push(o);},replaceChildren(...options){this.options=options;this.value=options[0]?.value??'';}};Object.defineProperty(e,'selectedOptions',{get:()=>e.options.filter(o=>o.value===e.value)});els.set(id,e);}return els.get(id);};
  const jobs=[];
- const sandbox={...optimizer,Worker:class{constructor(url){this.url=url;jobs.push(this);}postMessage(data){this.data=data;}terminate(){this.terminated=true;}},...geometry,...danger,...access,...possession,...passing,...integrity,...passPlayback,...help,...layout,setTimeout,clearTimeout,ImageData:class {constructor(data,width,height){Object.assign(this,{data,width,height});}},devicePixelRatio:3,performance:{now:()=>0},requestAnimationFrame(){},window:{matchMedia:()=>({matches:mobile}),addEventListener(k,fn){events.set(k,fn);}},document:{createElement:()=>element('offscreen'),addEventListener(){},getElementById:element,body:{classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k),contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k)}}},Option:class{constructor(text,value){this.textContent=text;this.value=value;}},fetch:async url=>{
+ const sandbox={...optimizer,...optimizerPath,Worker:class{constructor(url){this.url=url;jobs.push(this);}postMessage(data){this.data=data;}terminate(){this.terminated=true;}},...geometry,...danger,...access,...possession,...passing,...integrity,...passPlayback,...help,...layout,setTimeout,clearTimeout,ImageData:class {constructor(data,width,height){Object.assign(this,{data,width,height});}},devicePixelRatio:3,performance:{now:()=>0},requestAnimationFrame(){},window:{matchMedia:()=>({matches:mobile}),addEventListener(k,fn){events.set(k,fn);}},document:{createElement:()=>element('offscreen'),addEventListener(){},getElementById:element,body:{classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k),contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k)}}},Option:class{constructor(text,value){this.textContent=text;this.value=value;}},fetch:async url=>{
  requests.push(url);let data;if(url==='/demo.json')data=demo;else if(url==='/api/matches')data=[{id:1886347,label:'Test match'}];else if(url.endsWith('/passing'))data={valueModel:JSON.parse(await readFile(new URL('../../notebooks/fitted/value_model.json',import.meta.url),'utf8')),options:[],passes:[],settings:JSON.parse(await readFile(new URL('../../notebooks/fitted/pitch_control_settings.json',import.meta.url),'utf8')).settings,physical:Object.fromEntries(demo.metadata.players.map(p=>[p.id,{vmax:8,amax:5}])),runs:[]};else if(url.endsWith('/metadata'))data=demo.metadata;else if(url.endsWith('/phases'))data=[];else if(url.endsWith('/chances'))data={chances};else if(url.includes('/clip?')){const u=new URL(url,'http://test'),start=Number(u.searchParams.get('start'));data=demo.frames.slice(0,281).map((f,i)=>({...f,frame:start+i,period:2}));}else throw Error(url);return {ok:true,json:async()=>data};}};
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
  const client=(await readFile(new URL('../public/client.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
@@ -116,6 +117,32 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.equal(element('optimizerControls').hidden,true);
  element('play').onclick();
  assert.equal(element('optimizerControls').hidden,false);
+ element('findClipOptimum').onclick();
+ const clipJob=jobs.at(-1);
+ assert.equal(clipJob.data.scenes.length,29);
+ clipJob.onmessage({data:{completed:1}});
+ assert.equal(element('optimizerProgress').hidden,false);
+ assert.equal(element('optimizerProgress').value,1);
+ const results=clipJob.data.scenes.map(scene=>scene?{
+  value:0.125,
+  defenders:scene.defenders.map(p=>({id:p.id,x:p.x??p.bounds?.minX??0,y:p.y??p.bounds?.minY??0})),
+ }:null);
+ clipJob.onmessage({data:{results}});
+ assert.equal(element('optimizerProgress').hidden,true);
+ assert.equal(element('optimizerCharts').hidden,false);
+ assert.equal(element('optimizerMetricTitle').textContent,'Integrity');
+ const playable=results.findIndex(Boolean);
+ element('scrub').value=playable*10;
+ element('scrub').oninput();
+ assert.match(element('optimizerOffsetChart')['aria-label'], /Distance from optimum/);
+ assert.match(element('optimizerOffsetCount').textContent, /defenders were more than 5 m/);
+ const beforePlayback=paint.length;
+ element('play').onclick();
+ assert.equal(element('optimizerCharts').hidden,false);
+ assert.ok(paint.slice(beforePlayback).some(c=>c.name==='fillText'&&c.args[0]==='GK'));
+ element('optimizerMetric').value='epv';
+ element('optimizerMetric').onchange();
+ assert.equal(element('optimizerCharts').hidden,true);
  element('viewTiling').onclick();
  assert.equal(element('meshOptions').hidden,false);
  assert.equal(element('optimizerControls').hidden,true);

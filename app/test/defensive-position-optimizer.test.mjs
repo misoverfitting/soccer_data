@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { optimizeDefense } from '../public/defensive-position-optimizer.js';
+import { summarizePath, pathFormation } from '../public/optimizer-path.js';
 import { buildIntegrity } from '../public/integrity.js';
 
 const readFit = name => JSON.parse(readFileSync(new URL('../../notebooks/fitted/' + name, import.meta.url)));
@@ -52,8 +53,8 @@ for (const metric of ['Integrity', 'Danger', 'EPV']) {
 }
 
 test('optimizer worker minimizes Danger and EPV and maximizes Integrity', async () => {
-  let message;
-  globalThis.self = { postMessage: value => { message = value; } };
+  const messages = [];
+  globalThis.self = { postMessage: value => messages.push(value) };
   try {
     await import('../public/optimizer-worker.js');
     for (const [metric, direction] of [['danger', 'minimum'], ['integrity', 'maximum'], ['epv', 'minimum']]) {
@@ -63,10 +64,42 @@ test('optimizer worker minimizes Danger and EPV and maximizes Integrity', async 
         pitchLength: 50, pitchWidth: 30, restarts: 1,
       };
       self.onmessage({ data: { scene, fitted } });
-      assert.deepEqual(message, { result: optimizeDefense(scene, fitted)[direction] });
-      assert.deepEqual(message.result.defenders[0], { id: 'GK', x: -5, y: 2 });
+      const expected = optimizeDefense(scene, fitted)[direction];
+      assert.deepEqual(messages.pop(), { result: expected });
+      assert.deepEqual(expected.defenders[0], { id: 'GK', x: -5, y: 2 });
+      self.onmessage({ data: { scenes: [scene, null], fitted } });
+      assert.deepEqual(messages.splice(0), [{ completed: 1 }, { completed: 2 }, { results: [expected, null] }]);
     }
   } finally {
     delete globalThis.self;
   }
+});
+
+
+test('clip movement compares the same outfield players and interpolates by tracking frame', () => {
+  const keeper = { id: 'GK' };
+  const scene = { defenders: [keeper, { id: 'CB', vmax: 6 }, { id: 'FB' }] };
+  const samples = [
+    { second: 0, frame: 40, period: 1, team: 1, scene, keeper },
+    { second: 1, frame: 50, period: 1, team: 1, scene, keeper },
+    { second: 2, frame: 60, period: 1, team: 0, scene, keeper },
+  ];
+  const result = (keeperX, backX, fullBackX) => ({
+    value: 0.15,
+    defenders: [{ ...keeper, x: keeperX, y: 0 }, { id: 'CB', x: backX, y: 0 }, { id: 'FB', x: fullBackX, y: 9 }],
+  });
+  samples[1].tracked = new Map([
+    ['GK', { x: 0, y: 0 }], ['CB', { x: 1, y: 0 }], ['FB', { x: 3, y: 9 }],
+  ]);
+  const path = summarizePath(samples, [result(0, 0, 0), result(20, 7, 8), result(0, 0, 0)]);
+  assert.deepEqual(path.map(sample => sample.movement), [
+    { distance: 0, overThreshold: 0, players: 2 },
+    { distance: 15, overThreshold: 1, players: 2 },
+    null,
+  ]);
+  assert.deepEqual(path[1].offset, { distance: 11, overThreshold: 1, players: 2 });
+  assert.deepEqual(pathFormation(path, { frame: 45, period: 1 }, samples[0]), {
+    defenders: [{ id: 'CB', x: 3.5, y: 0 }, { id: 'FB', x: 4, y: 9 }],
+  });
+  assert.equal(pathFormation(path, { frame: 55, period: 1 }, samples[2]), null);
 });

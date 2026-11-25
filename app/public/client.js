@@ -1,3 +1,4 @@
+import {clipSamples, summarizePath, pathFormation, drawPathChart, distanceLabel, distanceThreshold} from './optimizer-path.js';
 import {optimizerSnapshot} from './optimizer-scene.js';
 import {playbackPitchHeight} from './layout.js';
 import {SETTING_HELP,settingHelp} from './settings-help.js';
@@ -173,8 +174,8 @@ window.visualViewport?.addEventListener('resize',()=>requestAnimationFrame(draw)
 requestAnimationFrame(fitPlaybackViewport);
 async function get(url){const r=await fetch(url);const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data;}
 function configure(m){meta=m;$('title').textContent=`${m.home_team.name} vs ${m.away_team.name}`;$('dimensions').textContent=`${m.pitch_length} × ${m.pitch_width} m`;$('team').replaceChildren(new Option('Both teams','all'),new Option(m.home_team.name,String(m.home_team.id)),new Option(m.away_team.name,String(m.away_team.id)));}
-function install(data){resetPassAdvice();$('startupLoading').hidden=true;$('play').disabled=false;$('scrub').disabled=false;loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
-async function demo(){const token=++request;try{const d=await get('/demo.json');if(token!==request)return;configure(d.metadata);passingData=await get(`/api/matches/${d.metadata.id}/passing`).catch(()=>null);if(token!==request)return;install(d.frames);say('Demo ready. Select a match and phase to explore another clip.');}catch(e){say(e.message);}}
+function install(data){clearClipOptimizer();resetPassAdvice();$('startupLoading').hidden=true;$('play').disabled=false;$('scrub').disabled=false;loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
+async function demo(){const token=++request;clearClipOptimizer();draw();try{const d=await get('/demo.json');if(token!==request)return;configure(d.metadata);passingData=await get(`/api/matches/${d.metadata.id}/passing`).catch(()=>null);if(token!==request)return;install(d.frames);say('Demo ready. Select a match and phase to explore another clip.');}catch(e){say(e.message);}}
 function teamColour(team){return teamScaleColour(team,meta,frames[index]?.period);}
 function drawSoccerBall(x,y,tint,detected){
  const r=4.6;
@@ -191,6 +192,88 @@ function drawSoccerBall(x,y,tint,detected){
  ctx.restore();
 }
 let optimizerState = null;
+let clipOptimizer = null;
+const optimizerLabels = { integrity:'Integrity', danger:'Danger', epv:'EPV' };
+
+function clearClipOptimizer() {
+ clipOptimizer?.worker?.terminate();
+ clipOptimizer = null;
+}
+
+$('findClipOptimum').onclick = () => {
+ if ($('findClipOptimum').disabled) return;
+ clearOptimizer();
+ clearClipOptimizer();
+ const metric = $('optimizerMetric').value;
+ const samples = clipSamples(frames, meta, passingData.physical);
+ const state = clipOptimizer = { request, completed:0, total:samples.length };
+ if (!samples.some(sample => sample.scene)) {
+  state.error = 'No frames have enough tracking data to calculate clip optimums.';
+  draw();
+  return;
+ }
+ const finish = ({ results, error }) => {
+  if (clipOptimizer !== state) return;
+  state.worker?.terminate();
+  state.worker = null;
+  state.error = error;
+  if (results) {
+   state.available = results.filter(Boolean).length;
+   if (state.available) state.path = summarizePath(samples, results);
+   else state.error = 'No clip optimums could be calculated.';
+  }
+  draw();
+ };
+ try {
+  const worker = state.worker = new Worker('/optimizer-worker.js', {type:'module'});
+  worker.onmessage = ({ data }) => {
+   if (clipOptimizer !== state || state.request !== request) return;
+   if (data.completed != null) {
+    state.completed = data.completed;
+    updateOptimizerProgress();
+   } else finish(data);
+  };
+  worker.onerror = () => finish({ error:'The clip optimizer could not run.' });
+  worker.postMessage({
+   scenes:samples.map(({ scene }) => scene ? { ...scene, metric } : null),
+   fitted:{ settings:passingData.settings, valueModel:passingData.valueModel },
+  });
+ } catch (error) {
+  finish({ error:error.message });
+ }
+ draw();
+};
+
+function updateOptimizerProgress() {
+ const progress = $('optimizerProgress');
+ progress.hidden = !clipOptimizer?.worker;
+ if (progress.hidden) return;
+ progress.max = clipOptimizer.total;
+ progress.value = clipOptimizer.completed;
+ $('optimizerStatus').textContent = `Calculating clip optimums… ${clipOptimizer.completed}/${clipOptimizer.total} seconds`;
+}
+
+function renderOptimizerPath(frame, metric) {
+ const path = clipOptimizer?.path;
+ $('optimizerCharts').hidden = !path;
+ if (!path) return;
+ const elapsed = Math.floor((frame.frame - path[0].frame) / 10);
+ const label = optimizerLabels[metric];
+ $('optimizerMetricTitle').textContent = label;
+ drawPathChart($('optimizerMetricChart'), path, elapsed, label);
+ const movementLabel = 'exceeded their top speed';
+ const offsetLabel = `were more than ${distanceThreshold} m from optimum`;
+ drawPathChart($('optimizerMovementChart'), path, elapsed, 'Total defender movement', {
+  field:'movement', countLabel:movementLabel,
+ });
+ drawPathChart($('optimizerOffsetChart'), path, elapsed, 'Distance from optimum', {
+  field:'offset', countLabel:offsetLabel,
+ });
+ $('optimizerMovementCount').textContent = distanceLabel(elapsed, path[elapsed].movement, movementLabel);
+ $('optimizerOffsetCount').textContent = distanceLabel(elapsed, path[elapsed].offset, offsetLabel);
+ $('optimizerOffsetThreshold').textContent =
+  `Green means no defenders were more than ${distanceThreshold} m from optimum. Red means all were. Gray marks unavailable comparisons.`;
+}
 
 function clearOptimizer() {
  optimizerState?.worker?.terminate();
@@ -201,14 +284,21 @@ function optimizerControls(frame, snapshot) {
  const metric = $('optimizerMetric').value;
  if (optimizerState && (playing || optimizerState.frame !== frame || optimizerState.metric !== metric
      || optimizerState.request !== request)) clearOptimizer();
- $('optimizerControls').hidden = playing;
- $('findOptimum').disabled = Boolean(snapshot.reason || !passingData?.valueModel || optimizerState?.worker);
+ const busy = Boolean(clipOptimizer?.worker || optimizerState?.worker);
+ $('findOptimum').disabled = Boolean(playing || snapshot.reason || !passingData?.valueModel || busy);
+ $('findClipOptimum').disabled = Boolean(!passingData?.valueModel || busy);
  const result = optimizerState?.result;
- const label = {integrity:'Integrity',danger:'Danger',epv:'EPV'}[metric];
- $('optimizerStatus').textContent = optimizerState?.worker ? 'Searching defensive positions…'
-   : optimizerState?.error ?? (result ? label + ' ' + result.value.toFixed(3) + ' · ' + (result.defenders.length - 1) + ' optimized outfield defenders'
-     : snapshot.reason ?? (!passingData?.valueModel ? 'Fitted model unavailable.' : ''));
- return playing ? null : result;
+ updateOptimizerProgress();
+ if (!clipOptimizer?.worker) {
+  $('optimizerStatus').textContent = optimizerState?.worker ? 'Searching defensive positions…'
+   : optimizerState?.error ?? (result
+    ? optimizerLabels[metric] + ' ' + result.value.toFixed(3) + ' · ' + (result.defenders.length - 1) + ' optimized outfield defenders'
+    : clipOptimizer?.error ?? (clipOptimizer?.path
+     ? `Clip optimums ready · ${clipOptimizer.available}/${clipOptimizer.total} seconds`
+     : snapshot.reason ?? (!passingData?.valueModel ? 'Fitted model unavailable.' : '')));
+ }
+ renderOptimizerPath(frame, metric);
+ return result ?? (clipOptimizer?.path ? pathFormation(clipOptimizer.path, frame, snapshot) : null);
 }
 
 $('findOptimum').onclick = () => {
@@ -237,7 +327,7 @@ $('findOptimum').onclick = () => {
  }
  draw();
 };
-$('optimizerMetric').onchange = () => { clearOptimizer(); draw(); };
+$('optimizerMetric').onchange = () => { clearOptimizer(); clearClipOptimizer(); draw(); };
 
 function drawOptimizedDefenders(result, keeper, px, scale) {
  if (!result) return;
@@ -262,8 +352,10 @@ function drawOptimizedDefenders(result, keeper, px, scale) {
 }
 
 function draw(){
- const hideOptimizer=currentView!=='optimizer'||playing||!frames.length;
- $('optimizerControls').hidden=hideOptimizer;
+ if (clipOptimizer && clipOptimizer.request !== request) clearClipOptimizer();
+ const hideOptimizer=currentView!=='optimizer'||!frames.length;
+ if (hideOptimizer) $('optimizerCharts').hidden = true;
+ $('optimizerControls').hidden=hideOptimizer||(playing&&!clipOptimizer?.worker);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
  const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
@@ -382,7 +474,7 @@ function fillChances(){
  $('chanceInfo').textContent=`${shown.length} clips · 20 s build-up + 8 s aftermath, bounded to the half. High = recorded attacking EPV ≥ 0.10 or a confirmed goal; this is not shot xG. Selecting loads the clip.`;
 }
 async function choose(){
- const token=++request;playing=false;$('play').textContent='▶ Play';$('chance').disabled=true;$('load').disabled=true;pendingMeta=null;
+ const token=++request;clearClipOptimizer();playing=false;$('play').textContent='▶ Play';draw();$('chance').disabled=true;$('load').disabled=true;pendingMeta=null;
  say('Reading match metadata, phases and pre-identified chances…');
  try{const id=$('match').value;const [m,p,c]=await Promise.all([get(`/api/matches/${id}/metadata`),get(`/api/matches/${id}/phases`),get(`/api/matches/${id}/chances`)]);
  if(token!==request)return;phases=p;chances=c.chances;fillChances();$('phase').replaceChildren(new Option('Opening clip',''));
@@ -395,7 +487,7 @@ $('chanceFilter').onchange=fillChances;
 $('phase').onchange=()=>{$('chance').value='';const p=phases[$('phase').value];$('start').value=p?.frame_start??10;};
 $('start').oninput=()=>$('chance').value='';$('duration').onchange=()=>$('chance').value='';
 async function loadClip(chance=null,initial=false){
- const token=++request,id=$('match').value;playing=false;$('play').textContent='▶ Play';$('load').disabled=true;
+ const token=++request,id=$('match').value;clearClipOptimizer();playing=false;$('play').textContent='▶ Play';draw();$('load').disabled=true;
  say('Streaming real tracking data… later clips may take up to 90 seconds.');
  try{const m=(pendingMeta?.id===Number(id)?pendingMeta:null)??await get(`/api/matches/${id}/metadata`);
  const query=chance?`start=${chance.startFrame}&count=${chance.count}&end=${chance.endFrame}&period=${chance.period}`:`start=${encodeURIComponent($('start').value)}&count=${Number($('duration').value)*10}`;
@@ -450,7 +542,7 @@ function setViewMode(value){
  $('meshSummary').textContent=optimizer?'Settings':'Mesh & colour settings';
  $('meshOptions').hidden=optimizer;
  $('optimizerSettings').hidden=!optimizer;
- $('optimizerControls').hidden=!optimizer||playing||!frames.length;
+ $('optimizerControls').hidden=!optimizer||!frames.length;
  $('tilingSettings').hidden=value!=='tiling';
  $('integritySettings').hidden=!integrity;
  $('toggleDanger').disabled=optimizer;

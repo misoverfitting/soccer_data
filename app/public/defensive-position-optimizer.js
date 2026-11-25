@@ -55,6 +55,13 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     }
     return b;
   });
+  const reachable = defenders.map((defender, i) => {
+    const points = defender.reachable;
+    if (points && (!points.length || !points.every(point => inBounds(point, bounds[i])))) {
+      throw new Error('Reachable positions must be on the pitch');
+    }
+    return points;
+  });
   const players = [...attackers, ...defenders];
   const physical = Object.fromEntries(players.map((p, i) => {
     const { vmax = 8, amax = 5 } = p;
@@ -114,7 +121,9 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
       const layout = [];
       for (const [index, b] of bounds.entries()) {
         for (let draw = 0; draw < 100; draw++) {
-          const point = { x: b.minX + random() * (b.maxX - b.minX), y: b.minY + random() * (b.maxY - b.minY) };
+          const points = reachable[index];
+          const point = points ? points[attempt === 0 && draw === 0 ? 0 : Math.floor(random() * points.length)]
+            : { x: b.minX + random() * (b.maxX - b.minX), y: b.minY + random() * (b.maxY - b.minY) };
           if (!spaced(point, layout, -1)) continue;
           layout.push(point);
           break;
@@ -148,17 +157,17 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
       }
       let layout = start.slice();
       let value = score(layout, coarse);
-      for (const step of [12, 6, 3, 1]) {
+      for (const step of reachable.some(Boolean) ? [1] : [12, 6, 3, 1]) {
         for (let sweep = 0; sweep < 2; sweep++) {
           let changed = false;
           for (let i = 0; i < layout.length; i++) {
             const origin = layout[i];
             const b = bounds[i];
-            for (const [dx, dy] of directions) {
-              const point = {
-                x: clamp(origin.x + step * dx, b.minX, b.maxX),
-                y: clamp(origin.y + step * dy, b.minY, b.maxY),
-              };
+            const candidates = reachable[i] ?? directions.map(([dx, dy]) => ({
+              x: clamp(origin.x + step * dx, b.minX, b.maxX),
+              y: clamp(origin.y + step * dy, b.minY, b.maxY),
+            }));
+            for (const point of candidates) {
               if (distance(origin, point) === 0 || !spaced(point, layout, i)) continue;
               const candidate = layout.slice();
               candidate[i] = point;

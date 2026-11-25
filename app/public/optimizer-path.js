@@ -27,6 +27,79 @@ export function clipSamples(frames, meta, physical) {
   return samples;
 }
 
+// A constant-acceleration move is feasible when both endpoint speeds and
+// acceleration fit the player's profile. The speed between endpoints is then bounded as well.
+const accelerationFractions = [{ x: 0, y: 0 }];
+for (const magnitude of [0.33, 0.67, 1]) {
+  for (let i = 0; i < 8; i++) {
+    const angle = i * Math.PI / 4;
+    accelerationFractions.push({ x: magnitude * Math.cos(angle), y: magnitude * Math.sin(angle) });
+  }
+}
+
+function staysOnPitch(position, velocity, acceleration, limit) {
+  const turn = -velocity / acceleration;
+  return !(turn > 0 && turn < 1) || Math.abs(position + velocity * turn + acceleration * turn ** 2 / 2) <= limit;
+}
+
+function reachablePositions(origin, previous, { vmax = 8, amax = 5 }, { pitchLength, pitchWidth }) {
+  if (Math.abs(origin.x) > pitchLength / 2 || Math.abs(origin.y) > pitchWidth / 2) return [];
+  const vx = previous ? (origin.x - previous.x) / 0.2 : 0;
+  const vy = previous ? (origin.y - previous.y) / 0.2 : 0;
+  const speedScale = Math.min(1, vmax / (Math.hypot(vx, vy) || 1));
+  const startX = vx * speedScale, startY = vy * speedScale;
+  return accelerationFractions.flatMap(fraction => {
+    const ax = fraction.x * amax, ay = fraction.y * amax;
+    const x = origin.x + startX + ax / 2, y = origin.y + startY + ay / 2;
+    if (Math.hypot(startX + ax, startY + ay) > vmax + 1e-9
+      || Math.abs(x) > pitchLength / 2 || Math.abs(y) > pitchWidth / 2
+      || !staysOnPitch(origin.x, startX, ax, pitchLength / 2)
+      || !staysOnPitch(origin.y, startY, ay, pitchWidth / 2)) return [];
+    return [{ x, y }];
+  });
+}
+
+export function plausibleSamples(frames, meta, physical) {
+  const indices = new Map(frames.map((frame, index) => [frame.frame, index]));
+  return clipSamples(frames, meta, physical).map(sample => {
+    const { frame, period, team, scene, tracked } = sample;
+    const index = indices.get(frame);
+    const futureIndex = indices.get(frame + framesPerSecond);
+    if (!scene || futureIndex == null || frames[futureIndex].period !== period) return { index };
+    const future = optimizerSnapshot(frames, futureIndex, meta, physical);
+    if (!future.scene || future.team !== team || future.keeper.id !== sample.keeper.id) return { index };
+    const priorFrame = frames[indices.get(frame - 2)];
+    const prior = priorFrame?.period === period ? trackedPositions(priorFrame) : null;
+    const defenders = scene.defenders.filter(p => p.id !== sample.keeper.id).map(({ id, vmax, amax }) => ({
+      id, vmax, amax,
+      reachable: tracked.has(id) ? reachablePositions(tracked.get(id), prior?.get(id), { vmax, amax }, scene) : [],
+    }));
+    if (!defenders.length || defenders.some(p => !p.reachable.length)) return { index };
+    const keeper = future.scene.defenders.find(p => p.id === future.keeper.id);
+    defenders.unshift({ id: keeper.id, vmax: keeper.vmax, amax: keeper.amax, bounds: keeper.bounds,
+      reachable: [{ x: future.keeper.x, y: future.keeper.y }] });
+    return { index, tracked, keeperId: keeper.id, scene: { ...future.scene, defenders, restarts: 1 } };
+  });
+}
+
+export function plausiblePlaybackStep(stops, hold, index, proposed, now) {
+  if (hold && now - hold.started < 2000) return { hold, index, waiting: true };
+  const stop = stops.find(stop => stop.index >= index && stop.index <= proposed && stop.index !== hold?.index);
+  if (!stop) return { hold, index: proposed, waiting: false };
+  return {
+    hold: { index: stop.index, started: now, previous: hold?.current, current: stop.arrows },
+    index: stop.index,
+    waiting: true,
+  };
+}
+
+export function plausibleArrowPhase(hold, now) {
+  if (!hold) return {};
+  const elapsed = Math.max(0, now - hold.started);
+  if (elapsed < 1000) return { arrows: hold.previous, opacity: 1 - elapsed / 1000, progress: 1 };
+  return { arrows: hold.current, opacity: 1, progress: Math.min(1, (elapsed - 1000) / 1000) };
+}
+
 export function summarizePath(samples, results) {
   return samples.map(({ scene, keeper, tracked, priorTracked, ...sample }, i) => {
     const result = results[i];

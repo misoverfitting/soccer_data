@@ -143,6 +143,17 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('optimizerMetric').value='epv';
  element('optimizerMetric').onchange();
  assert.equal(element('optimizerCharts').hidden,true);
+ element('findPlausibleOptimum').onclick();
+ const plausibleJob=jobs.at(-1);
+ assert.notEqual(plausibleJob,clipJob);
+ assert.ok(plausibleJob.data.scenes.some(scene=>scene?.defenders.some(player=>player.reachable?.length>1)));
+ plausibleJob.onmessage({data:{completed:1}});
+ assert.match(element('optimizerStatus').textContent,/Calculating plausible optimums/);
+ plausibleJob.onmessage({data:{results:plausibleJob.data.scenes.map(scene=>scene?{
+  value:0.125,defenders:scene.defenders.map(p=>({id:p.id,...p.reachable[0]})),
+ }:null)}});
+ assert.match(element('optimizerStatus').textContent,/Plausible optimums ready/);
+ assert.match(element('teamLegend').textContent,/gold arrows/);
  element('viewTiling').onclick();
  assert.equal(element('meshOptions').hidden,false);
  assert.equal(element('optimizerControls').hidden,true);

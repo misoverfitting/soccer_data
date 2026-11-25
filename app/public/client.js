@@ -486,5 +486,5 @@ async function startup(){
   else $('startupLoading').textContent='Unable to load tracking. Please try Return to bundled demo.';
  }
 }
-setViewMode('integrity');
+setViewMode('optimizer');
 await startup();

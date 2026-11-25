@@ -26,7 +26,12 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
  const client=(await readFile(new URL('../public/client.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
  await vm.runInNewContext(`(async()=>{${client}\n})()`,sandbox);
- assert.equal(element('viewIntegrity')['aria-pressed'],'true','Defensive Integrity starts selected');
+ assert.equal(element('viewOptimizer')['aria-pressed'],'true','Optimizer starts selected');
+ assert.equal(element('optimizerSettings').hidden,false);
+ assert.equal(element('meshOptions').hidden,true);
+ assert.equal(element('meshSummary').textContent,'Settings');
+ assert.equal(element('optimizerControls').hidden,false);
+ element('viewIntegrity').onclick();
  assert.equal(element('integritySettings').hidden,false);assert.equal(element('showReceiving').checked,false);assert.equal(element('help-viewIntegrity').hidden,false);
  element('help-viewIntegrity').onpointerenter({pointerType:'mouse'});assert.match(element('settingHelpText').textContent,/Fitted notebook model/);
  element('viewTiling').onclick();assert.equal(element('settingTooltip').popOpen,false);assert.equal(element('help-viewIntegrity').hidden,true);

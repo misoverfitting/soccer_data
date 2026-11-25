@@ -1,7 +1,7 @@
 # Defensive Integrity view
 
 The header switches between the original Pitch Tiling viewer and Defensive
-Integrity. The app starts in Defensive Integrity; its toggle shows the model
+Integrity. The app opens in Optimizer. The Defensive Integrity toggle shows the model
 legend as a tooltip only while selected. Both views use the same clips and playback controls. Integrity defaults to
 pitch control, players and ball, with tiles, links, facing and halos off. Mesh
 settings offers four maps plus optional defender links, tiles, marking assignments

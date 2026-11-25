@@ -1,6 +1,6 @@
 // One worker per model version. It computes every frame of the loaded clip, starting at the playhead
 // ("focus") and working forwards, and sends back all six surfaces quantised to Int16 (value × 32767),
-// plus the frame's integrity and danger.
+// plus the frame's one-action and two-action integrity and danger.
 import {createModel} from './model.js';
 
 let model = null, version = null, states = [], done = [], clipId = -1, focus = 0, busy = false;
@@ -25,14 +25,20 @@ function step() {
   const s = states[i];
   if (!s) self.postMessage({clipId, version, i, q: null, integrity: null, danger: null});
   else {
-    const out = model.compute(s, version), N = model.N, q = new Int16Array(6 * N);
+    const out = model.compute(s, version), N = model.N, q = new Int16Array(7 * N);
     const put = (arr, off) => { for (let k = 0; k < N; k++) q[off + k] = Math.round(Math.max(-1, Math.min(1, arr[k])) * 32767); };
     put(out.pAtt, 0); put(out.pSucc, N); put(out.value, 2 * N); put(out.gain, 3 * N); put(out.protect, 4 * N); put(out.keepView, 5 * N);
+    let integrity2 = null;
+    if (version === 'v3') {
+      const lookahead = model.integrityTwoActions(s, out);
+      integrity2 = lookahead.integrity;
+      put(lookahead.protect, 6 * N);
+    }
     // danger: the frame's scores, and each attacker's projected spot and share of it (attacking frame, player ids)
     // (D1: 1 s ahead, Section 8d; D3: the two most dangerous, 3 s ahead, Section 8f)
     const pack = (D, list) => ({D, list: list.map(a => ({id: s.ids[a.i], x: a.x, y: a.y, c: a.contrib, def: a.def >= 0 ? s.ids[a.def] : null}))});
     const danger = Number.isFinite(out.danger) ? {'1s': pack(out.danger, out.dangerList), '3s': pack(out.dangerExt, out.dangerExtList)} : null;
-    self.postMessage({clipId, version, i, q, vBall: out.vBall, integrity: out.integrity, danger, carrier: out.carrier}, [q.buffer]);
+    self.postMessage({clipId, version, i, q, vBall: out.vBall, integrity: out.integrity, integrity2, danger, carrier: out.carrier}, [q.buffer]);
   }
   schedule();
 }

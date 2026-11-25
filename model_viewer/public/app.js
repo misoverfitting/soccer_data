@@ -50,7 +50,7 @@ const panelText = ver => S.layer === 'pc' && S.pcKind === 'keep' ? TEXT.keep[ver
 const S = {
   models: null, matches: [], match: null, roster: new Map(), seq: null, filter: 'goal',
   clip: null,               // {id, frames, states, attTeam, flip, period}
-  res: {v0: [], v2: [], v3: []}, vBall: {v0: [], v2: [], v3: []}, integ: {v0: [], v2: [], v3: []},
+  res: {v0: [], v2: [], v3: []}, vBall: {v0: [], v2: [], v3: []}, integ: {v0: [], v2: [], v3: []}, integ2: [],
   carrier: {v0: [], v2: [], v3: []}, danger: {v0: [], v2: [], v3: []}, clipId: 0,
   i: 0, playing: false, speed: 1, acc: 0, last: 0,
   layer: 'pc', pcKind: 'att', dKind: '3s', view: 'side', single: 'v3', hover: null, panels: [],
@@ -115,6 +115,7 @@ function syncToggles() {
   $('#pcKind').hidden = S.layer !== 'pc';
   $('#dKind').hidden = S.layer !== 'danger';
   $('#single').hidden = S.view !== 'single';
+  $('#single button[data-v="i2"]').hidden = S.layer !== 'integ';
 }
 function writeHash() {
   const p = new URLSearchParams({m: S.match?.id ?? '', l: S.layer, k: S.pcKind, d: S.dKind, v: S.view, o: S.single});
@@ -209,6 +210,7 @@ function setAttack(teamId) {
   S.res = Object.fromEntries(VERS.map(v => [v, new Array(c.frames.length)]));
   S.vBall = Object.fromEntries(VERS.map(v => [v, []]));
   S.integ = Object.fromEntries(VERS.map(v => [v, new Array(c.frames.length).fill(null)]));
+  S.integ2 = new Array(c.frames.length).fill(null);
   S.carrier = Object.fromEntries(VERS.map(v => [v, []]));
   S.danger = Object.fromEntries(VERS.map(v => [v, new Array(c.frames.length).fill(null)]));
   for (const v of VERS) {
@@ -259,6 +261,7 @@ function onResult(e) {
   S.res[m.version][m.i] = m.q || 'empty';
   S.vBall[m.version][m.i] = m.vBall;
   S.integ[m.version][m.i] = Number.isFinite(m.integrity) ? m.integrity : null;
+  if (m.version === 'v3') S.integ2[m.i] = Number.isFinite(m.integrity2) ? m.integrity2 : null;
   S.carrier[m.version][m.i] = m.carrier ?? -1;
   S.danger[m.version][m.i] = m.danger;
   if (m.i === S.i) draw();
@@ -273,7 +276,7 @@ function progress() {
 }
 
 // ---------------- playback ----------------
-const needed = () => S.view === 'single' ? [S.single] : DIFFS[S.view] || VERS;
+const needed = () => S.view === 'single' ? [S.single === 'i2' ? 'v3' : S.single] : DIFFS[S.view] || VERS;
 const ready = i => needed().every(v => S.res[v][i] !== undefined);
 function togglePlay() { S.playing ? stop() : play(); }
 function play() {
@@ -330,13 +333,14 @@ function renderTicks() {
 const WORLD = {x0: -55.5, x1: 55.5, y0: -37, y1: 37};
 function buildPanels() {
   syncToggles();
-  if (!VERS.includes(S.single)) S.single = 'v3';
+  if (![...VERS, 'i2'].includes(S.single)) S.single = 'v3';
   if (!['side', 'single', ...Object.keys(DIFFS)].includes(S.view)) S.view = 'side';
-  const specs = S.view === 'side' ? VERS.map(ver => ({ver})) : S.view === 'single' ? [{ver: S.single}]
+  const specs = S.view === 'side' ? [...VERS.map(ver => ({ver})), ...(S.layer === 'integ' ? [{ver: 'v3', integrity2: true}] : [])]
+    : S.view === 'single' ? [S.layer === 'integ' && S.single === 'i2' ? {ver: 'v3', integrity2: true} : {ver: S.single === 'i2' ? 'v3' : S.single}]
     : [{diff: true, a: DIFFS[S.view][0], b: DIFFS[S.view][1]}];
-  $('#pitches').className = 'pitches' + (specs.length === 1 ? ' one' : specs.length === 3 ? ' three' : '');
+  $('#pitches').className = 'pitches' + (specs.length === 1 ? ' one' : specs.length === 3 ? ' three' : specs.length === 4 ? ' four' : '');
   $('#pitches').innerHTML = specs.map((s, j) => {
-    const [title, sub] = s.diff ? [`${s.b} − ${s.a}`, `orange: ${s.b} higher · purple: ${s.b} lower · ${s.a === 'v0' ? 'what fitting changed' : 'what carries changed'}`]
+    const [title, sub] = s.integrity2 ? ['Integrity: two actions (v3)', 'Best immediate pass or carry, followed by one projected action'] : s.diff ? [`${s.b} − ${s.a}`, `orange: ${s.b} higher · purple: ${s.b} lower · ${s.a === 'v0' ? 'what fitting changed' : 'what carries changed'}`]
       : panelText(s.ver);
     return `<div class="pitchCard"><span class="vball" data-j="${j}"></span><h3>${title}</h3><p>${sub}</p><canvas data-j="${j}"></canvas></div>`;
   }).join('');
@@ -359,10 +363,10 @@ const off = Object.assign(document.createElement('canvas'), {width: NX, height: 
 const offCtx = off.getContext('2d');
 const img = offCtx.createImageData(NX, NY);
 
-function field(ver, i) {
+function field(ver, i, integrity2 = false) {
   const q = S.res[ver][i];
   if (!q || q === 'empty') return null;
-  if (S.layer === 'integ') return k => q[4 * N + k] === PROTECT_OUT * 32767 ? NaN : q[4 * N + k] / 32767;
+  if (S.layer === 'integ') { const off = integrity2 ? 6 * N : 4 * N; return k => q[off + k] === PROTECT_OUT * 32767 ? NaN : q[off + k] / 32767; }
   if (S.layer === 'pc' && S.pcKind === 'keep') return k => q[5 * N + k] === NO_CARRY * 32767 ? NaN : q[5 * N + k] / 32767;
   const o = S.layer === 'pc' ? (S.pcKind === 'att' ? 0 : S.pcKind === 'keep' ? 5 * N : N) : S.layer === 'epv' || S.layer === 'danger' ? 2 * N : S.layer === 'gain' ? 3 * N : 4 * N;
   return k => q[o + k] / 32767;
@@ -402,7 +406,7 @@ function draw() {
       if (a && b) get = keep ? k => { const vb = b(k), va = a(k); return Number.isNaN(vb) ? NaN : vb - (Number.isNaN(va) ? 0 : va); }
                              : k => b(k) - a(k);
     }
-    else get = field(p.ver, S.i);
+    else get = field(p.ver, S.i, p.integrity2);
     if (get) paintSurface(ctx, p, get);
     drawPitch(ctx, p);
     if (S.layer === 'integ' && fr.b) drawZone(ctx, p, fr);
@@ -418,12 +422,12 @@ function draw() {
     if (!get) { ctx.fillStyle = 'rgba(29,31,34,.7)'; ctx.font = `${12 * p.scale / 6}px system-ui`; ctx.fillText(fr.b ? 'computing…' : 'ball not tracked in this frame', 10 * p.scale / 6, 18 * p.scale / 6); }
     p.vball.classList.toggle('score', TRACKED.includes(S.layer));
     if (TRACKED.includes(S.layer)) {          // integrity and danger together, whichever of the two is shown
-      const I = ver => S.integ[ver][S.i], D = kind => ver => Dof(ver, S.i, kind);
+      const I = ver => p.integrity2 ? S.integ2[S.i] : S.integ[ver][S.i], D = kind => ver => Dof(ver, S.i, kind);
       const fmt = (x, d) => x == null ? '…' : x.toFixed(d);
       const dl = (f, d) => f(p.a) != null && f(p.b) != null ? (f(p.b) - f(p.a) >= 0 ? '+' : '−') + Math.abs(f(p.b) - f(p.a)).toFixed(d) : '…';
       const val = (lab, f, d) => p.diff ? `Δ${lab} ${dl(f, d)}` : `${lab} ${fmt(f(p.ver), d)}`;
       // integrity, then danger 1 s and 3 s; the one the layer shows at full strength, the others dimmed
-      const parts = [['integ', val('I', I, 2)], ['1s', val(D_LABEL['1s'], D('1s'), 3)], ['3s', val(D_LABEL['3s'], D('3s'), 3)]];
+      const parts = [['integ', val(p.integrity2 ? 'I2' : 'I', I, 2)], ['1s', val(D_LABEL['1s'], D('1s'), 3)], ['3s', val(D_LABEL['3s'], D('3s'), 3)]];
       const on = S.layer === 'danger' ? S.dKind : 'integ';
       p.vball.innerHTML = parts.map(([k, t]) => k === on ? t : `<span class="dim">${t}</span>`).join(' · ');
     } else {
@@ -482,10 +486,13 @@ function drawTrack() {
   box.hidden = !TRACKED.includes(S.layer) || !S.clip;
   if (box.hidden) return;
   const isD = S.layer === 'danger';
+  $('#itrackI2Key').hidden = isD;
   $('#itrackTitle').innerHTML = isD ? (S.dKind === '3s' ? '<b>Danger D₃ over the clip</b> · the two most dangerous attackers left free, 3 s ahead (v3 = v2)'
     : '<b>Danger D₁ over the clip</b> · the most dangerous attacker left free, 1 s ahead (v3 = v2)')
-    : '<b>Integrity I over the clip</b> · 1 = every valuable pass (v3: or carry) towards goal denied';
+    : '<b>Integrity I and I2 over the clip</b> · 1 = every valuable pass (v3: or carry) towards goal denied';
   const series = Object.fromEntries(VERS.map(v => [v, isD ? S.danger[v].map(d => d?.[S.dKind]?.D ?? null) : S.integ[v]]));
+  if (!isD) series.i2 = S.integ2;
+  const lineKeys = isD ? VERS : [...VERS, 'i2'];
   const yMax = isD ? Math.max(S.dKind === '3s' ? 0.3 : 0.12, ...VERS.flatMap(v => series[v].filter(x => x != null))) : 1;
   const c = $('#itrackCanvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round((c.clientWidth || 600) * dpr), H = Math.round(90 * dpr);
@@ -508,7 +515,9 @@ function drawTrack() {
       ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
     }
   }
-  for (const [ver, col, dash] of [['v0', '#9a9a9a', [4 * dpr, 3 * dpr]], ['v2', '#2c7bb6', []], ['v3', '#1a9850', isD ? [2 * dpr, 3 * dpr] : []]]) {
+  const styles = {v0:['#9a9a9a',[4*dpr,3*dpr]],v2:['#2c7bb6',[]],v3:['#1a9850',isD?[2*dpr,3*dpr]:[]],i2:['#6B4C9A',[5*dpr,2*dpr]]};
+  for (const ver of lineKeys) {
+    const [col,dash]=styles[ver];
     ctx.strokeStyle = col; ctx.lineWidth = (ver === 'v0' ? 1.5 : 2) * dpr; ctx.setLineDash(dash); ctx.beginPath();
     let pen = false;
     series[ver].forEach((v, i) => { if (v == null) { pen = false; return; } pen ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v)); pen = true; });
@@ -516,7 +525,7 @@ function drawTrack() {
   }
   ctx.strokeStyle = css.getPropertyValue('--ink').trim() || '#1d1f22'; ctx.lineWidth = 1.5 * dpr;
   ctx.beginPath(); ctx.moveTo(X(S.i), padT); ctx.lineTo(X(S.i), H - padB); ctx.stroke();
-  const done = VERS.map(v => series[v].filter(x => x != null).length);
+  const done = lineKeys.map(v => series[v].filter(x => x != null).length);
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
   ctx.fillText(done.every(d => d >= n - S.clip.frames.filter(f => !f.b).length) ? 'click to jump' : 'filling in as the models compute…', padL, H - 2 * dpr);
 }
@@ -576,7 +585,7 @@ function readout() {
   if (!S.hover || !S.clip) {
     cells.forEach(c => c.textContent = '');
     if (S.clip) for (const v of VERS) frameScores(v);
-    $('#readoutCap').textContent = 'Hover over a pitch to compare v0, v2 and v3 at one spot';
+    $('#readoutCap').textContent = 'Hover over a pitch to compare v0, v2, v3 and two-action integrity';
     return;
   }
   const sgn = S.clip.flip ? -1 : 1, ax = S.hover.x * sgn, ay = S.hover.y * sgn;
@@ -599,6 +608,7 @@ function readout() {
 function frameScores(v) {
   const I = S.integ[v][S.i], D1 = Dof(v, S.i, '1s'), D3 = Dof(v, S.i, '3s');
   $(`#readout td[data-k="${v}-I"]`).textContent = I == null ? '—' : I.toFixed(2);
+  if (v === 'v3') $('#readout td[data-k="v3-I2"]').textContent = S.integ2[S.i] == null ? '-' : S.integ2[S.i].toFixed(2);
   $(`#readout td[data-k="${v}-D"]`).textContent = D1 == null ? '—' : D1.toFixed(3);
   $(`#readout td[data-k="${v}-D3"]`).textContent = D3 == null ? '—' : D3.toFixed(3);
 }

@@ -1,6 +1,6 @@
-import {clipSamples, summarizePath, pathFormation, drawPathChart, distanceThreshold} from './optimizer-path.js';
+import {clipSamples, plausibleSamples, plausiblePlaybackStep, plausibleArrowPhase, summarizePath, pathFormation, drawPathChart, distanceThreshold} from './optimizer-path.js';
 import {optimizerSnapshot} from './optimizer-scene.js';
-import {playbackPitchHeight} from './layout.js';
+import {playbackPitchHeight, optimizerPitchWidth} from './layout.js';
 import {SETTING_HELP,settingHelp} from './settings-help.js';
 import {buildIntegrity,integrityColour} from './integrity.js';
 import {PassPlayback,passOverlayOpacity} from './pass-playback.js';
@@ -156,14 +156,27 @@ function fitPlaybackViewport(){
  if(!canvas.parentElement||!Number.isFinite(window.innerHeight))return;
  if(document.body.classList.contains('pitch-focus')){canvas.style.height='';return;}
  const pitch=canvas.parentElement,transport=$('play').closest('.transport'),style=getComputedStyle(transport);
+ const mobile=window.matchMedia('(max-width: 900px)').matches;
+ const optimizerLayout=currentView==='optimizer'&&meta&&!mobile;
+ const main=pitch.closest('main');
+ let canvasWidth=canvas.getBoundingClientRect().width;
+ if(optimizerLayout){
+  const gridStyle=getComputedStyle(main);
+  canvasWidth=main.clientWidth-parseFloat(gridStyle.paddingLeft)-parseFloat(gridStyle.paddingRight)
+   -parseFloat(gridStyle.columnGap)-parseFloat(gridStyle.getPropertyValue('--optimizer-charts-min'))-2;
+ }
  const height=playbackPitchHeight({
   viewportHeight:window.visualViewport?.height??document.documentElement.clientHeight,
-  pitchWidth:canvas.getBoundingClientRect().width,
+  pitchWidth:canvasWidth,
   pitchTop:Math.max(0,pitch.getBoundingClientRect().top+window.scrollY),
   controlsHeight:transport.getBoundingClientRect().height,
   controlsMargins:(parseFloat(style.marginTop)||0)+(parseFloat(style.marginBottom)||0),
-  mobile:window.matchMedia('(max-width: 900px)').matches
+  mobile
  });
+ if(optimizerLayout){
+  const width=optimizerPitchWidth(canvasWidth,height,meta.pitch_length,meta.pitch_width);
+  main.style.setProperty('--optimizer-viewer-width',`${Math.max(0,width+2)}px`);
+ }
  if(canvas.style.height!==`${height}px`)canvas.style.height=`${height}px`;
 }
 function revealPlayback(behavior='instant'){
@@ -193,20 +206,26 @@ function drawSoccerBall(x,y,tint,detected){
 }
 let optimizerState = null;
 let clipOptimizer = null;
+let plausibleHold = null, plausibleTime = 0;
 const optimizerLabels = { integrity:'Integrity', danger:'Danger', epv:'EPV' };
 
 function clearClipOptimizer() {
  clipOptimizer?.worker?.terminate();
  clipOptimizer = null;
+ plausibleHold = null;
 }
 
-$('findClipOptimum').onclick = () => {
- if ($('findClipOptimum').disabled) return;
+$('findClipOptimum').onclick = () => findClipOptimums(false);
+$('findPlausibleOptimum').onclick = () => findClipOptimums(true);
+
+function findClipOptimums(plausible) {
+ if ($('findClipOptimum').disabled || currentView !== 'optimizer' || !frames.length) return;
  clearOptimizer();
  clearClipOptimizer();
  const metric = $('optimizerMetric').value;
- const samples = clipSamples(frames, meta, passingData.physical);
- const state = clipOptimizer = { request, completed:0, total:samples.length };
+ const sampleClip = plausible ? plausibleSamples : clipSamples;
+ const samples = sampleClip(frames, meta, passingData.physical);
+ const state = clipOptimizer = { request, plausible, completed:0, total:samples.length };
  if (!samples.some(sample => sample.scene)) {
   state.error = 'No frames have enough tracking data to calculate clip optimums.';
   draw();
@@ -219,7 +238,19 @@ $('findClipOptimum').onclick = () => {
   state.error = error;
   if (results) {
    state.available = results.filter(Boolean).length;
-   if (state.available) state.path = summarizePath(samples, results);
+   if (state.available && plausible) {
+    state.stops = samples.flatMap(({ index, tracked, keeperId }, i) => {
+     const result = results[i];
+     if (!result) return [];
+     const arrows = result.defenders.filter(p => p.id !== keeperId && tracked.has(p.id))
+      .map(to => ({ from:tracked.get(to.id), to }));
+     return [{ index, arrows }];
+    });
+    index = 0;
+    playing = false;
+    $('play').textContent = '▶ Play';
+    plausibleHold = null;
+   } else if (state.available) state.path = summarizePath(samples, results);
    else state.error = 'No clip optimums could be calculated.';
   }
   draw();
@@ -242,7 +273,7 @@ $('findClipOptimum').onclick = () => {
   finish({ error:error.message });
  }
  draw();
-};
+}
 
 function updateOptimizerProgress() {
  const progress = $('optimizerProgress');
@@ -250,7 +281,7 @@ function updateOptimizerProgress() {
  if (progress.hidden) return;
  progress.max = clipOptimizer.total;
  progress.value = clipOptimizer.completed;
- $('optimizerStatus').textContent = `Calculating clip optimums… ${clipOptimizer.completed}/${clipOptimizer.total} seconds`;
+ $('optimizerStatus').textContent = `Calculating ${clipOptimizer.plausible ? 'plausible' : 'clip'} optimums… ${clipOptimizer.completed}/${clipOptimizer.total} seconds`;
 }
 
 function renderOptimizerPath(frame, metric) {
@@ -286,6 +317,7 @@ function optimizerControls(frame, snapshot) {
  const busy = Boolean(clipOptimizer?.worker || optimizerState?.worker);
  $('findOptimum').disabled = Boolean(playing || snapshot.reason || !passingData?.valueModel || busy);
  $('findClipOptimum').disabled = Boolean(!passingData?.valueModel || busy);
+ $('findPlausibleOptimum').disabled = $('findClipOptimum').disabled;
  const result = optimizerState?.result;
  updateOptimizerProgress();
  if (!clipOptimizer?.worker) {
@@ -294,6 +326,7 @@ function optimizerControls(frame, snapshot) {
     ? optimizerLabels[metric] + ' ' + result.value.toFixed(3) + ' · ' + (result.defenders.length - 1) + ' optimized outfield defenders'
     : clipOptimizer?.error ?? (clipOptimizer?.path
      ? `Clip optimums ready · ${clipOptimizer.available}/${clipOptimizer.total} seconds`
+     : clipOptimizer?.stops ? `Plausible optimums ready · ${clipOptimizer.available} recommendations · press Play`
      : snapshot.reason ?? (!passingData?.valueModel ? 'Fitted model unavailable.' : '')));
  }
  renderOptimizerPath(frame, metric);
@@ -305,6 +338,7 @@ $('findOptimum').onclick = () => {
  if (currentView !== 'optimizer' || !frame || playing || $('findOptimum').disabled) return;
  const snapshot = optimizerSnapshot(frames, index, meta, passingData?.physical);
  if (!snapshot.scene || !passingData?.valueModel) return;
+ if (clipOptimizer?.plausible) clearClipOptimizer();
  clearOptimizer();
  const state = optimizerState = {frame, metric:$('optimizerMetric').value, request};
  try {
@@ -350,15 +384,42 @@ function drawOptimizedDefenders(result, keeper, px, scale) {
  }
 }
 
+function drawPlausibleArrows(px) {
+ const { arrows, opacity, progress } = plausibleArrowPhase(plausibleHold, plausibleTime);
+ if (!arrows?.length || !opacity || !progress) return;
+ ctx.save();
+ ctx.globalAlpha=opacity;
+ ctx.strokeStyle='#ffcf79';
+ ctx.fillStyle='#ffcf79';
+ ctx.lineWidth=2.5;
+ ctx.lineCap='round';
+ for (const { from, to } of arrows) {
+  const [x,y]=px(from.x,from.y);
+  const [tx,ty]=px(to.x,to.y);
+  const dx=tx-x,dy=ty-y,length=Math.hypot(dx,dy);
+  if (length<2) continue;
+  const tipX=x+dx*progress,tipY=y+dy*progress;
+  const head=Math.min(7,length*progress*0.65);
+  const ux=dx/length,uy=dy/length;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(tipX,tipY);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(tipX,tipY);
+  ctx.lineTo(tipX-ux*head-uy*head*0.55,tipY-uy*head+ux*head*0.55);
+  ctx.lineTo(tipX-ux*head+uy*head*0.55,tipY-uy*head-ux*head*0.55);
+  ctx.closePath();ctx.fill();
+ }
+ ctx.restore();
+}
+
 function draw(){
  if (clipOptimizer && clipOptimizer.request !== request) clearClipOptimizer();
  const hideOptimizer=currentView!=='optimizer'||!frames.length;
  if (hideOptimizer) $('optimizerCharts').hidden = true;
  $('optimizerControls').hidden=hideOptimizer||(playing&&!clipOptimizer?.worker);
- fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,scale=Math.min((w-48)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
+ fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
  const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
- const optimizerTeam=snapshot?.team==null?'unknown':String(snapshot.team);
+ const plausible=isOptimizer&&Boolean(clipOptimizer?.stops);
+ const optimizerTeam=plausible?'all':snapshot?.team==null?'unknown':String(snapshot.team);
  const points=vertices(f,meta,{team:isOptimizer?optimizerTeam:$('team').value,ball:isOptimizer||$('ball').checked,detectedOnly:!isOptimizer&&$('detected').checked});
  let danger,holdLabel='';
  if(!isOptimizer){
@@ -412,8 +473,11 @@ function draw(){
  ctx.globalAlpha=1;ctx.setLineDash([]);ctx.strokeStyle='#6c9690';ctx.lineWidth=1;ctx.strokeRect(...px(-L/2,W/2),L*scale,W*scale);ctx.beginPath();ctx.moveTo(...px(0,-W/2));ctx.lineTo(...px(0,W/2));ctx.stroke();ctx.beginPath();ctx.arc(...px(0,0),9.15*scale,0,Math.PI*2);ctx.stroke();for(const side of [-1,1]){const x=side<0?-L/2:L/2-16.5;ctx.strokeRect(...px(x,20.16),16.5*scale,40.32*scale);const gx=side<0?-L/2:L/2-5.5;ctx.strokeRect(...px(gx,9.16),5.5*scale,18.32*scale);}
  vertices(f,meta,{team:isOptimizer?optimizerTeam:isIntegrity?'all':$('team').value,ball:true,detectedOnly:!isOptimizer&&$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');if(ball){drawSoccerBall(...px(p.x,p.y),dangerColour(danger?.current),p.is_detected);return;}ctx.beginPath();ctx.arc(...px(p.x,p.y),Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=teamColour(p.team);ctx.fill();const showEstimate=!isOptimizer&&!p.is_detected&&$('showEstimates').checked;ctx.strokeStyle=showEstimate?'#ffcc81':'#102321';ctx.setLineDash(showEstimate?[2,2]:[]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
  if(isOptimizer){
-  drawOptimizedDefenders(optimizerControls(f,snapshot),snapshot.keeper,px,scale);
-  $('teamLegend').textContent='Tracked attackers · gold rings = optimized defenders · GK = tracked goalkeeper';
+  const result=optimizerControls(f,snapshot);
+  if(plausible)drawPlausibleArrows(px);
+  else drawOptimizedDefenders(result,snapshot.keeper,px,scale);
+  $('teamLegend').textContent=plausible?'Tracked players · gold arrows = recommended moves over the next second'
+   :'Tracked attackers · gold rings = optimized defenders · GK = tracked goalkeeper';
   $('fillLegend').textContent='';
  }else drawPassAdvice(px);
  $('estimateLegend').hidden=!$('showEstimates').checked;
@@ -499,14 +563,23 @@ async function loadClip(chance=null,initial=false){
 }
 $('load').onclick=()=>loadClip(chances.find(c=>c.id===$('chance').value)??null);
 $('chance').onchange=()=>{const c=chances.find(c=>c.id===$('chance').value);if(c){$('start').value=c.startFrame;$('phase').value='';return loadClip(c);}};
-$('jumpShot').onclick=()=>{if(!loadedChance)return;resetPassAdvice();index=frames.reduce((best,f,i)=>Math.abs(f.frame-loadedChance.anchorFrame)<Math.abs(frames[best].frame-loadedChance.anchorFrame)?i:best,0);playing=false;$('play').textContent='▶ Play';draw();};
+$('jumpShot').onclick=()=>{if(!loadedChance)return;plausibleHold=null;resetPassAdvice();index=frames.reduce((best,f,i)=>Math.abs(f.frame-loadedChance.anchorFrame)<Math.abs(frames[best].frame-loadedChance.anchorFrame)?i:best,0);playing=false;$('play').textContent='▶ Play';draw();};
 $('match').onchange=choose;$('demo').onclick=demo;
-$('play').onclick=()=>{selected=null;if(index>=frames.length-1){index=0;resetPassAdvice();}playing=!playing;last=performance.now();$('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();};
-$('scrub').oninput=()=>{index=Number($('scrub').value);passPlayback.seek(frames[index].frame,frames[index].period,passingData?.passes??[]);passSnapshot=null;playing=false;$('play').textContent='▶ Play';draw();};
+$('play').onclick=()=>{selected=null;if(index>=frames.length-1){index=0;plausibleHold=null;resetPassAdvice();}playing=!playing;last=performance.now();if(playing&&plausibleHold)plausibleHold.started+=last-plausibleTime;$('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();};
+$('scrub').oninput=()=>{plausibleHold=null;index=Number($('scrub').value);passPlayback.seek(frames[index].frame,frames[index].period,passingData?.passes??[]);passSnapshot=null;playing=false;$('play').textContent='▶ Play';draw();};
 for(const id of ['mode','team','colour','ball','ballOnly','detected','showEstimates','showReceiving'])$(id).onchange=()=>{selected=null;$('inspect').textContent=$('mode').value==='voronoi'?'Cells show proximity to each selected site; ball cells are neutral.':'Pause and click a triangle to inspect it.';draw();};
 function tick(now){
  if(playing&&frames.length){
-  if(now<passPlayback.until){last=now;}else{
+  if(currentView==='optimizer'&&clipOptimizer?.stops){
+   const dt=100/Number($('speed').value);
+   const proposed=Math.min(frames.length-1,index+Math.floor((now-last)/dt));
+   const next=plausiblePlaybackStep(clipOptimizer.stops,plausibleHold,index,proposed,now);
+   if(next.waiting||next.index!==index){
+    plausibleHold=next.hold;plausibleTime=now;index=next.index;last=now;
+    if(index===frames.length-1&&!next.waiting){playing=false;$('play').textContent='▶ Replay';}
+    draw();
+   }
+  }else if(now<passPlayback.until){last=now;}else{
    const dt=100/Number($('speed').value);
    if(now-last>=dt){
     const proposed=Math.min(frames.length-1,index+Math.floor((now-last)/dt));
@@ -525,6 +598,7 @@ let tilingHalos=true,integrityHalos=false;
 function setViewMode(value){
  if(currentView===value)return;
  closeSettingHelp();
+ plausibleHold=null;
  clearOptimizer();
  resetPassAdvice();
  if(currentView==='tiling')tilingHalos=$('showReceiving').checked;

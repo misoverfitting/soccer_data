@@ -55,6 +55,13 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     }
     return b;
   });
+  const reachable = defenders.map((defender, i) => {
+    const points = defender.reachable;
+    if (points && (!points.length || !points.every(point => inBounds(point, bounds[i])))) {
+      throw new Error('Reachable positions must be on the pitch');
+    }
+    return points;
+  });
   const players = [...attackers, ...defenders];
   const physical = Object.fromEntries(players.map((p, i) => {
     const { vmax = 8, amax = 5 } = p;
@@ -114,7 +121,9 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
       const layout = [];
       for (const [index, b] of bounds.entries()) {
         for (let draw = 0; draw < 100; draw++) {
-          const point = { x: b.minX + random() * (b.maxX - b.minX), y: b.minY + random() * (b.maxY - b.minY) };
+          const points = reachable[index];
+          const point = points ? points[attempt === 0 && draw === 0 ? 0 : Math.floor(random() * points.length)]
+            : { x: b.minX + random() * (b.maxX - b.minX), y: b.minY + random() * (b.maxY - b.minY) };
           if (!spaced(point, layout, -1)) continue;
           layout.push(point);
           break;
@@ -137,6 +146,36 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     defenders: layout.map((p, i) => ({ id: defenders[i].id ?? i + 1, ...p })),
   });
 
+  function coordinatedMove(layout, value, sign) {
+    const alternatives = reachable.map((points, index) => {
+      if (!points || points.length < 2) return [];
+      return points.filter(point => distance(point, layout[index]) > 0).map(point => {
+        const candidate = layout.slice();
+        candidate[index] = point;
+        // Keep promising moves even if they only work once a teammate moves too.
+        return { point, value: score(candidate, coarse) };
+      }).sort((a, b) => sign * (b.value - a.value)).slice(0, 2);
+    });
+    let best = { layout, value };
+    for (let first = 0; first < alternatives.length; first++) {
+      for (let second = first + 1; second < alternatives.length; second++) {
+        for (const a of alternatives[first]) {
+          for (const b of alternatives[second]) {
+            const candidate = layout.slice();
+            candidate[first] = a.point;
+            candidate[second] = b.point;
+            if (!spaced(a.point, candidate, first) || !spaced(b.point, candidate, second)) continue;
+            const jointValue = score(candidate, coarse);
+            if (sign * (jointValue - best.value) > 1e-12) best = { layout: candidate, value: jointValue };
+          }
+        }
+      }
+    }
+    return best;
+  }
+
+  const constrainedSearch = reachable.some(Boolean);
+
   function search(sign) {
     let best = scoredStarts[0].layout;
     let bestValue = scoredStarts[0].value;
@@ -148,17 +187,17 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
       }
       let layout = start.slice();
       let value = score(layout, coarse);
-      for (const step of [12, 6, 3, 1]) {
+      for (const step of constrainedSearch ? [1] : [12, 6, 3, 1]) {
         for (let sweep = 0; sweep < 2; sweep++) {
           let changed = false;
           for (let i = 0; i < layout.length; i++) {
             const origin = layout[i];
             const b = bounds[i];
-            for (const [dx, dy] of directions) {
-              const point = {
-                x: clamp(origin.x + step * dx, b.minX, b.maxX),
-                y: clamp(origin.y + step * dy, b.minY, b.maxY),
-              };
+            const candidates = reachable[i] ?? directions.map(([dx, dy]) => ({
+              x: clamp(origin.x + step * dx, b.minX, b.maxX),
+              y: clamp(origin.y + step * dy, b.minY, b.maxY),
+            }));
+            for (const point of candidates) {
               if (distance(origin, point) === 0 || !spaced(point, layout, i)) continue;
               const candidate = layout.slice();
               candidate[i] = point;
@@ -172,7 +211,17 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
           if (!changed) break;
         }
       }
-      const finalValue = useFinal ? value : score(layout, finalPoints);
+      let finalValue = useFinal ? value : score(layout, finalPoints);
+      if (constrainedSearch) {
+        const joint = coordinatedMove(layout, value, sign);
+        if (joint.layout !== layout) {
+          const jointValue = useFinal ? joint.value : score(joint.layout, finalPoints);
+          if (improves(jointValue, finalValue)) {
+            layout = joint.layout;
+            finalValue = jointValue;
+          }
+        }
+      }
       if (improves(finalValue, bestValue)) {
         best = layout;
         bestValue = finalValue;

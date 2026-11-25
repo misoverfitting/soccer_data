@@ -135,9 +135,8 @@ body.pitch-focus{overflow:hidden}
 #focusPitch{transform:scale(.75);transform-origin:center}
 
 #optimizerControls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;grid-column:1/-1;order:1}
-#findOptimum{width:auto;min-height:40px;margin:0}
 #optimizerStatus{color:#afc4ca;font-size:12px}
-#findOptimum:disabled{opacity:.55;cursor:default}
+.optimizer-buttons button:disabled{opacity:.55;cursor:default}
 .optimizer-view .transport{flex-wrap:wrap}
 .optimizer-view .transport>input{flex:1;min-width:0}
 .optimizer-view #optimizerControls{flex-basis:100%}
@@ -153,3 +152,14 @@ body.pitch-focus{overflow:hidden}
 .optimizer-action{position:relative}
 #optimumTooltip{display:none;position:absolute;bottom:calc(100% + 8px);left:0;z-index:5;width:min(280px,78vw);padding:10px 12px;border:1px solid #46616a;border-radius:8px;background:#142128;color:#e1ecee;font-size:12px;line-height:1.5}
 .optimizer-action:hover #optimumTooltip,.optimizer-action:focus-within #optimumTooltip{display:block}
+
+#optimizerControls{justify-content:center;text-align:center}
+.optimizer-buttons{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;width:100%}
+.transport .optimizer-buttons button{width:auto;min-height:40px;margin:0;white-space:nowrap}
+#optimizerProgress{width:min(240px,100%);accent-color:#a6ead0}
+#optimizerStatus:empty{display:none}
+#optimizerCharts{padding:16px;border-top:1px solid #293a41;min-width:0}
+#optimizerCharts h2{margin:0 0 4px}
+#optimizerCharts canvas{height:145px;aspect-ratio:auto;cursor:default}
+#optimizerCharts .note{margin:4px 0 8px}
+@media(max-width:900px){.optimizer-view #meshControls,#optimizerCharts{grid-column:1/-1}}

@@ -14,6 +14,7 @@ export function createJointMarkovView(get, element) {
   const status = element('markovJointStatus');
   const readout = element('markovJointReadout');
   const scenario = element('markovJointScenario');
+  const showSamples = element('markovJointShowSamples');
 
   function load(onReady) {
     if (fit || pending) return pending;
@@ -66,6 +67,7 @@ export function createJointMarkovView(get, element) {
       entity.disabled = !tracked.length;
     }
     element('markovJointTargetField').hidden = !backward;
+    element('markovJointScenarioField').hidden = !showSamples.checked;
     scenario.disabled = !fit || !snapshot;
     if (!fit) return;
     if (!snapshot) {
@@ -184,10 +186,12 @@ export function createJointMarkovView(get, element) {
       ctx.lineTo(...px(receiver.x, receiver.y));
       ctx.stroke();
       ctx.setLineDash([]);
-      const [x, y] = px(next.x, next.y);
-      ctx.strokeRect(x - 3.5, y - 3.5, 7, 7);
+      if (showSamples.checked) {
+        const [x, y] = px(next.x, next.y);
+        ctx.strokeRect(x - 3.5, y - 3.5, 7, 7);
+      }
     }
-    for (const [i, result] of nextFrame.entries()) {
+    for (const [i, result] of (showSamples.checked ? nextFrame : []).entries()) {
       if (i === 0 && ballPhase.mode !== 'joint') continue;
       const start = snapshot.points[i];
       const [x, y] = px(result.x + 0.5, result.y + 0.5);

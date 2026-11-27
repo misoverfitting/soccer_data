@@ -9,14 +9,12 @@ import {buildAccess,accessColour} from './access.js';
 import {possessionSource,POSSESSION_HOLD_FRAMES} from './possession.js';
 import {buildDanger,dangerColour,teamScaleColour} from './danger.js';
 import {vertices,area,inside} from './geometry.js';
-import {createMarkovView} from './markov-view.js';
 import {createSpatialMarkovView} from './spatial-markov-view.js';
 import {createGridMarkovView} from './grid-markov-view.js';
 import {createJointMarkovView} from './joint-markov-view.js';
 import {createPassValueView} from './pass-value-view.js';
 import {passFlightPoint,passInTransit} from './pass-value.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
-const markovView=createMarkovView(url=>get(url),$);
 const spatialMarkovView=createSpatialMarkovView(url=>get(url),$);
 const gridMarkovView=createGridMarkovView(url=>get(url),$);
 const jointMarkovView=createJointMarkovView(url=>get(url),$);
@@ -241,7 +239,7 @@ function resetJointPlayback(){
  previousJointProjection=null;
 }
 function jointViewActive(){
- return currentView==='markov'&&['joint',''].includes($('markovModel').value);
+ return currentView==='markov'&&!['grid','spatial'].includes($('markovModel').value);
 }
 const optimizerLabels = { integrity:'Integrity', danger:'Danger', epv:'EPV' };
 
@@ -481,7 +479,6 @@ function draw(){
   jointMarkovView.render(frames,forecastIndex,meta,$('markovMode').value==='backward',ballForecastPhase(frames[forecastIndex]));
   passValueView.render(frames,index,meta,passingData);
  }
- else if(isMarkov)markovView.render(frames[index],meta);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
  const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
@@ -555,7 +552,9 @@ function draw(){
     !jointReplay||jointHold?jointMarkovView.projection():null;
    jointMarkovView.paint(ctx,px,scale,L,W,teamColour,projection,fading?1-jointElapsed/1000:1);
   }
-  $('teamLegend').textContent=isJoint?'Circles show the tracked frame · squares show a sampled frame one second ahead'
+  $('teamLegend').textContent=isJoint?($('markovJointShowSamples').checked
+   ?'Circles show the tracked frame · squares show a sampled frame one second ahead'
+   :'Circles show the tracked frame · colors show the focused entity’s forecast')
    :isGrid?'Tracked frame · brighter cells have higher probability one second ahead'
    :isSpatial?'Solid markers show the tracked frame · dotted paths lead to forecast means'
    :'Tracked players and ball at the selected frame';
@@ -741,23 +740,18 @@ $('viewMarkov').onclick=()=>{
 };
 function selectMarkovModel(){
  resetJointPlayback();
- const coarse=$('markovModel').value==='coarse';
  const spatial=$('markovModel').value==='spatial';
  const grid=$('markovModel').value==='grid';
- $('markovJoint').hidden=coarse||spatial||grid;
+ $('markovJoint').hidden=spatial||grid;
  $('markovGrid').hidden=!grid;
  $('markovSpatial').hidden=!spatial;
- $('markovCoarse').hidden=!coarse;
- $('markovHorizonField').hidden=!coarse&&!spatial;
- const horizon=$('markovHorizon');
- horizon.max=coarse?'60':'20';
- if(Number(horizon.value)>Number(horizon.max))horizon.value=horizon.max;
+ $('markovHorizonField').hidden=!spatial;
  draw();
- if(coarse||spatial||grid)return (coarse?markovView:spatial?spatialMarkovView:gridMarkovView).load(draw);
+ if(spatial||grid)return (spatial?spatialMarkovView:gridMarkovView).load(draw);
  return Promise.all([jointMarkovView.load(draw),passValueView.load(draw)]);
 }
 $('markovModel').onchange=selectMarkovModel;
-for(const id of ['markovMode','markovHorizon','markovTarget','markovEntity','markovSpatialTarget','markovGridEntity','markovGridTarget','markovJointEntity','markovJointScenario','markovJointTarget']){
+for(const id of ['markovMode','markovHorizon','markovEntity','markovSpatialTarget','markovGridEntity','markovGridTarget','markovJointEntity','markovJointScenario','markovJointTarget','markovJointShowSamples']){
  $(id).oninput=draw;
 }
 for(const id of ['integrityColour','legacyDanger','integrityTiles','integrityConnections','integrityMarking','integrityFacing'])$(id).onchange=()=>{$('legacySetting').hidden=$('integrityColour').value!=='danger';draw();};

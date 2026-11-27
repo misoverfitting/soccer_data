@@ -1,6 +1,5 @@
 import * as optimizerPath from '../public/optimizer-path.js';
 import * as optimizer from '../public/optimizer-scene.js';
-import * as markov from '../public/markov.js';
 import * as spatialMarkov from '../public/spatial-markov.js';
 import * as gridMarkov from '../public/grid-markov.js';
 import * as jointMarkov from '../public/joint-markov.js';
@@ -31,13 +30,13 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  const sandbox={...optimizer,...optimizerPath,Worker:class{constructor(url){this.url=url;jobs.push(this);}postMessage(data){this.data=data;}terminate(){this.terminated=true;}},...geometry,...danger,...access,...possession,...passing,...integrity,...passPlayback,...help,...layout,setTimeout,clearTimeout,ImageData:class {constructor(data,width,height){Object.assign(this,{data,width,height});}},devicePixelRatio:3,performance:{now:()=>0},requestAnimationFrame(){},window:{matchMedia:()=>({matches:mobile}),addEventListener(k,fn){events.set(k,fn);}},document:{createElement:()=>element('offscreen'),addEventListener(){},getElementById:element,body:{classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k),contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k)}}},Option:class{constructor(text,value){this.textContent=text;this.value=value;}},fetch:async url=>{
  requests.push(url);let data;if(url==='/demo.json')data=demo;else if(url==='/api/matches')data=[{id:1886347,label:'Test match'}];else if(url.endsWith('/passing'))data={valueModel:JSON.parse(await readFile(new URL('../../notebooks/fitted/value_model.json',import.meta.url),'utf8')),options:[],passes:[],settings:JSON.parse(await readFile(new URL('../../notebooks/fitted/pitch_control_settings.json',import.meta.url),'utf8')).settings,physical:Object.fromEntries(demo.metadata.players.map(p=>[p.id,{vmax:8,amax:5}])),runs:[]};else if(url.endsWith('/metadata'))data=demo.metadata;else if(url.endsWith('/phases'))data=[];else if(url.endsWith('/chances'))data={chances};else if(url.includes('/clip?')){const u=new URL(url,'http://test'),start=Number(u.searchParams.get('start'));data=demo.frames.slice(0,281).map((f,i)=>({...f,frame:start+i,period:2}));}else throw Error(url);return {ok:true,json:async()=>data};}};
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
- Object.assign(sandbox,markov,spatialMarkov,gridMarkov,jointMarkov,passValue);
+ Object.assign(sandbox,spatialMarkov,gridMarkov,jointMarkov,passValue);
  let animation, now=0;
  sandbox.requestAnimationFrame=callback=>{if(callback.name==='tick')animation=callback;};
  sandbox.performance.now=()=>now;
  const fetchViewer=sandbox.fetch;
  sandbox.fetch=async url=>{
-  if(['/markov-fit.json','/spatial-markov-fit.json','/grid-markov-fit.json','/joint-markov-fit.json','/pass-value-fit.json'].includes(url))
+  if(['/spatial-markov-fit.json','/grid-markov-fit.json','/joint-markov-fit.json','/pass-value-fit.json'].includes(url))
    return {ok:true,json:async()=>JSON.parse(await readFile(new URL('../public'+url,import.meta.url),'utf8'))};
   const response=await fetchViewer(url);
   if(url.endsWith('/passing'))return {...response,json:async()=>({...await response.json(),passes:annotatedPasses})};
@@ -47,9 +46,6 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  sandbox.document.createElement=tag=>tag==='canvas'?createElement(tag):{
   children:[],append(...children){this.children.push(...children);},setAttribute(){},
  };
- const markovView=(await readFile(new URL('../public/markov-view.js',import.meta.url),'utf8'))
-  .replace(/^import .*;\r?\n/gm,'').replace('export function','function');
- vm.runInNewContext(markovView,sandbox);
  const spatialView=(await readFile(new URL('../public/spatial-markov-view.js',import.meta.url),'utf8'))
   .replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function');
  Object.assign(sandbox,vm.runInNewContext(`(()=>{${spatialView}\nreturn {createSpatialMarkovView,spatialTarget};})()`,sandbox));
@@ -219,6 +215,15 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.equal(element('markovPanel').hidden,false);
  assert.equal(element('viewMarkov')['aria-pressed'],'true');
  assert.equal(element('markovJoint').hidden,false);
+ assert.equal(element('markovJointScenarioField').hidden,true);
+ const beforeSampleToggle=paint.length;
+ element('scrub').value=20;
+ element('scrub').oninput();
+ assert.equal(element('markovJointLegend').hidden,false);
+ assert.ok(!paint.slice(beforeSampleToggle).some(call=>call.name==='strokeRect'&&call.args[2]===7&&call.args[3]===7));
+ element('markovJointShowSamples').checked=true;
+ element('markovJointShowSamples').oninput();
+ assert.equal(element('markovJointScenarioField').hidden,false);
  element('scrub').value=0;
  element('scrub').oninput();
  const initialFocus=element('markovJointEntity').options[1];
@@ -295,7 +300,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  await element('markovModel').onchange();
  assert.equal(element('markovGrid').hidden,true);
  assert.equal(element('markovSpatial').hidden,false);
- assert.equal(element('markovCoarse').hidden,true);
+ assert.equal(element('markovHorizonField').hidden,false);
  assert.ok(element('markovEntity').options.some(option=>option.value==='ball'));
  assert.equal(element('markovSpatialValidation').options.length,10);
  assert.match(element('markovSpatialReadout').textContent,/80% radius/);
@@ -304,20 +309,6 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('markovMode').oninput();
  assert.equal(element('markovSpatialTargetField').hidden,false);
  assert.match(element('markovSpatialReadout').textContent,/chance of being in the shaded area/);
- element('markovMode').value='forward';
- element('markovModel').value='coarse';
- await element('markovModel').onchange();
- assert.equal(element('markovSpatial').hidden,true);
- assert.equal(element('markovOutput').options.length,7);
- assert.equal(element('markovValidation').options.length,5);
- assert.match(element('markovReadout').textContent,/bits/);
- element('markovHorizon').value='0';
- element('markovHorizon').oninput();
- assert.equal(element('markovOutput').options.filter(row=>row.children[1].value===1).length,1);
- element('markovMode').value='backward';
- element('markovMode').oninput();
- assert.equal(element('markovTargetField').hidden,false);
- assert.match(element('markovReadout').textContent,/Chance of the target/);
  element('viewOptimizer').onclick();
  assert.equal(element('markovPanel').hidden,true);
 });

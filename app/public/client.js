@@ -238,20 +238,21 @@ function findClipOptimums(plausible) {
   state.error = error;
   if (results) {
    state.available = results.filter(Boolean).length;
+   if (state.available) state.path = summarizePath(samples, results);
+   else state.error = 'No clip optimums could be calculated.';
    if (state.available && plausible) {
-    state.stops = samples.flatMap(({ index, tracked, keeperId }, i) => {
+    state.stops = samples.flatMap(({ index, priorTracked, keeper }, i) => {
      const result = results[i];
      if (!result) return [];
-     const arrows = result.defenders.filter(p => p.id !== keeperId && tracked.has(p.id))
-      .map(to => ({ from:tracked.get(to.id), to }));
+     const arrows = result.defenders.filter(p => p.id !== keeper.id && priorTracked.has(p.id))
+      .map(to => ({ from:priorTracked.get(to.id), to }));
      return [{ index, arrows }];
     });
     index = 0;
     playing = false;
     $('play').textContent = '▶ Play';
     plausibleHold = null;
-   } else if (state.available) state.path = summarizePath(samples, results);
-   else state.error = 'No clip optimums could be calculated.';
+   }
   }
   draw();
  };
@@ -324,13 +325,15 @@ function optimizerControls(frame, snapshot) {
   $('optimizerStatus').textContent = optimizerState?.worker ? 'Searching defensive positions…'
    : optimizerState?.error ?? (result
     ? optimizerLabels[metric] + ' ' + result.value.toFixed(3) + ' · ' + (result.defenders.length - 1) + ' optimized outfield defenders'
-    : clipOptimizer?.error ?? (clipOptimizer?.path
+    : clipOptimizer?.error ?? (clipOptimizer?.stops
+     ? `Plausible optimums ready · ${clipOptimizer.available} recommendations · press Play`
+     : clipOptimizer?.path
      ? `Clip optimums ready · ${clipOptimizer.available}/${clipOptimizer.total} seconds`
-     : clipOptimizer?.stops ? `Plausible optimums ready · ${clipOptimizer.available} recommendations · press Play`
      : snapshot.reason ?? (!passingData?.valueModel ? 'Fitted model unavailable.' : '')));
  }
  renderOptimizerPath(frame, metric);
- return result ?? (clipOptimizer?.path ? pathFormation(clipOptimizer.path, frame, snapshot) : null);
+ return result ?? (clipOptimizer?.path && !clipOptimizer.plausible
+  ? pathFormation(clipOptimizer.path, frame, snapshot) : null);
 }
 
 $('findOptimum').onclick = () => {

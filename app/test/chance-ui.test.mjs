@@ -154,6 +154,14 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  }:null)}});
  assert.match(element('optimizerStatus').textContent,/Plausible optimums ready/);
  assert.match(element('teamLegend').textContent,/gold arrows/);
+ assert.equal(element('optimizerCharts').hidden,false);
+ assert.equal(element('optimizerMetricTitle').textContent,'EPV');
+ element('scrub').value=plausibleJob.data.scenes.findIndex(Boolean)*10;
+ element('scrub').oninput();
+ assert.match(element('optimizerMetricChart')['aria-label'], /EPV at .*: 0\.125/);
+ assert.match(element('optimizerMovementChart')['aria-label'], /Total defender movement/);
+ assert.match(element('optimizerOffsetChart')['aria-label'], /Distance from optimum.* m/);
+ assert.match(element('optimizerAlignmentChart')['aria-label'], /Movement toward optimum at .*: \d/);
  element('viewTiling').onclick();
  assert.equal(element('meshOptions').hidden,false);
  assert.equal(element('optimizerControls').hidden,true);

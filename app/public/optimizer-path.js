@@ -64,21 +64,26 @@ export function plausibleSamples(frames, meta, physical) {
   return clipSamples(frames, meta, physical).map(sample => {
     const { frame, period, team, scene, tracked } = sample;
     const index = indices.get(frame);
+    const unavailable = { second: sample.second, frame, period, index };
     const futureIndex = indices.get(frame + framesPerSecond);
-    if (!scene || futureIndex == null || frames[futureIndex].period !== period) return { index };
+    if (!scene || futureIndex == null || frames[futureIndex].period !== period) return unavailable;
     const future = optimizerSnapshot(frames, futureIndex, meta, physical);
-    if (!future.scene || future.team !== team || future.keeper.id !== sample.keeper.id) return { index };
+    if (!future.scene || future.team !== team || future.keeper.id !== sample.keeper.id) return unavailable;
     const priorFrame = frames[indices.get(frame - 2)];
     const prior = priorFrame?.period === period ? trackedPositions(priorFrame) : null;
     const defenders = scene.defenders.filter(p => p.id !== sample.keeper.id).map(({ id, vmax, amax }) => ({
       id, vmax, amax,
       reachable: tracked.has(id) ? reachablePositions(tracked.get(id), prior?.get(id), { vmax, amax }, scene) : [],
     }));
-    if (!defenders.length || defenders.some(p => !p.reachable.length)) return { index };
+    if (!defenders.length || defenders.some(p => !p.reachable.length)) return unavailable;
     const keeper = future.scene.defenders.find(p => p.id === future.keeper.id);
     defenders.unshift({ id: keeper.id, vmax: keeper.vmax, amax: keeper.amax, bounds: keeper.bounds,
       reachable: [{ x: future.keeper.x, y: future.keeper.y }] });
-    return { index, tracked, keeperId: keeper.id, scene: { ...future.scene, defenders, restarts: 1 } };
+    return {
+      ...unavailable, team, keeper: future.keeper,
+      tracked: trackedPositions(frames[futureIndex]), priorTracked: tracked,
+      scene: { ...future.scene, defenders, restarts: 1 },
+    };
   });
 }
 

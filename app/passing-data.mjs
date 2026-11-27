@@ -23,6 +23,6 @@ export async function passingData(root,id,meta){
  const runs=events.filter(r=>r.event_type==='off_ball_run').map(r=>({id:r.event_id,player_id:+r.player_id,start:+r.frame_start,end:+r.frame_end,x:+r.x_end,y:+r.y_end,side:r.attacking_side}));
  const possessions=events.filter(r=>r.event_type==='player_possession').sort((a,b)=>+a.frame_start-+b.frame_start);
  const options=events.filter(r=>r.event_type==='passing_option'&&(r.passing_option_at_pass_moment==='True'||r.targeted==='True')).map(r=>({possession:r.associated_player_possession_event_id,player_id:+r.player_id,name:r.player_name,targeted:r.targeted==='True',run:r.associated_off_ball_run_event_id}));
- const passes=possessions.flatMap((r,i)=>r.end_type==='pass'?[{id:r.event_id,release:+r.frame_end,complete:+(possessions[i+1]?.frame_start??r.frame_end),period:+r.period,team:+r.team_id,carrier:+r.player_id,side:r.attacking_side,outcome:r.pass_outcome}]:[]);
+ const passes=possessions.flatMap((r,i)=>r.end_type==='pass'?[{id:r.event_id,release:+r.frame_end,complete:+(possessions[i+1]?.frame_start??r.frame_end),period:+r.period,team:+r.team_id,carrier:+r.player_id,target:r.player_targeted_id?+r.player_targeted_id:null,side:r.attacking_side,outcome:r.pass_outcome}]:[]);
  return {settings:JSON.parse(settingsText).settings,valueModel:JSON.parse(valueText),physical,runs,options,passes};
 }

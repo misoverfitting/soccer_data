@@ -13,11 +13,14 @@ import {createMarkovView} from './markov-view.js';
 import {createSpatialMarkovView} from './spatial-markov-view.js';
 import {createGridMarkovView} from './grid-markov-view.js';
 import {createJointMarkovView} from './joint-markov-view.js';
+import {createPassValueView} from './pass-value-view.js';
+import {passFlightPoint,passInTransit} from './pass-value.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
 const markovView=createMarkovView(url=>get(url),$);
 const spatialMarkovView=createSpatialMarkovView(url=>get(url),$);
 const gridMarkovView=createGridMarkovView(url=>get(url),$);
 const jointMarkovView=createJointMarkovView(url=>get(url),$);
+const passValueView=createPassValueView(url=>get(url),$);
 let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=null,transform,request=0;
 let chances=[],loadedChance=null,passingData=null,currentView='tiling';
 const passPlayback=new PassPlayback();let passSnapshot=null;
@@ -43,7 +46,23 @@ function passRecommendation(event){
  if(i<0)return null;
  const model=notebookModel(frames[i],i,event);
  if(model.reason)return null;
- passSnapshot={id:event.id,ball:model.ball,...model.recommendations(event)};return passSnapshot;
+ const receiver=model.receivers.find(player=>player.player_id===event.target);
+ const option=passingData?.options?.find(entry=>entry.possession===event.id&&entry.player_id===event.target);
+ const intended=receiver?model.projectedOption(receiver,option):null;
+ passSnapshot={id:event.id,ball:model.ball,intended,...model.recommendations(event)};return passSnapshot;
+}
+function ballForecastPhase(frame){
+ const event=passInTransit(passingData?.passes,frame);
+ if(event){
+  // The release must be present. A later tracking frame cannot stand in for it.
+  if(!frames.some(candidate=>candidate.period===event.period&&candidate.frame===event.release))return {mode:'unavailable'};
+  const advice=passRecommendation(event),target=advice?.intended??advice?.options[0];
+  if(!target)return {mode:'unavailable'};
+  return {mode:'pass',release:advice.ball,target,next:passFlightPoint(advice.ball,target,event,frame.frame+10),
+   success:target.success,receiver:target.name,annotationTarget:Boolean(advice.intended)};
+ }
+ const possession=frame?.possession;
+ return {mode:possession?.player_id!=null||['home team','away team'].includes(possession?.group)?'joint':'unavailable'};
 }
 function drawPassAdvice(px){
  const recommendation=passRecommendation(passPlayback.active);
@@ -457,7 +476,11 @@ function draw(){
   $('markovSeconds').textContent=`${seconds} s`;
   spatialMarkovView.render(frames,index,meta,seconds,$('markovMode').value==='backward');
  }else if(isGrid)gridMarkovView.render(frames,index,meta,$('markovMode').value==='backward');
- else if(isJoint)jointMarkovView.render(frames,jointReplay&&jointHold?jointHold.index:index,meta,$('markovMode').value==='backward');
+ else if(isJoint){
+  const forecastIndex=jointReplay&&jointHold?jointHold.index:index;
+  jointMarkovView.render(frames,forecastIndex,meta,$('markovMode').value==='backward',ballForecastPhase(frames[forecastIndex]));
+  passValueView.render(frames,index,meta,passingData);
+ }
  else if(isMarkov)markovView.render(frames[index],meta);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
@@ -640,7 +663,7 @@ function tick(now){
    const resume=jointHold?Math.max(last,jointHold.started+jointHoldDuration):last;
    const advance=Math.max(0,Math.floor((now-resume)/dt));
    const proposed=Math.min(frames.length-1,index+advance);
-   const next=plausiblePlaybackStep(jointMarkovView.playbackStops(frames,meta),jointHold,index,proposed,now,jointHoldDuration);
+   const next=plausiblePlaybackStep(jointMarkovView.playbackStops(frames,meta,passingData?.passes),jointHold,index,proposed,now,jointHoldDuration);
    if(next.waiting||next.index!==index){
     if(next.hold!==jointHold)previousJointProjection=jointHold?jointMarkovView.projection():null;
     jointHold=next.hold;jointTime=now;index=next.index;last=now;
@@ -729,7 +752,8 @@ function selectMarkovModel(){
  horizon.max=coarse?'60':'20';
  if(Number(horizon.value)>Number(horizon.max))horizon.value=horizon.max;
  draw();
- return (coarse?markovView:spatial?spatialMarkovView:grid?gridMarkovView:jointMarkovView).load(draw);
+ if(coarse||spatial||grid)return (coarse?markovView:spatial?spatialMarkovView:gridMarkovView).load(draw);
+ return Promise.all([jointMarkovView.load(draw),passValueView.load(draw)]);
 }
 $('markovModel').onchange=selectMarkovModel;
 for(const id of ['markovMode','markovHorizon','markovTarget','markovEntity','markovSpatialTarget','markovGridEntity','markovGridTarget','markovJointEntity','markovJointScenario','markovJointTarget']){

@@ -1,6 +1,6 @@
 import { gridState, gridTransition } from './grid-markov.js';
 import { spatialTarget } from './spatial-markov-view.js';
-import { spatialEntities } from './spatial-markov.js';
+import { focusLabel, spatialEntities } from './spatial-markov.js';
 
 const percent = value => new Intl.NumberFormat('en', { style: 'percent', maximumFractionDigits: 1 }).format(value);
 
@@ -51,7 +51,7 @@ export function createGridMarkovView(get, element) {
       const next = spatialEntities(frame, roster);
       if (next.map(point => point.id).join() !== points.map(point => point.id).join()) {
         const selected = entity.value;
-        entity.replaceChildren(...next.map(point => new Option(point.name, point.id)));
+        entity.replaceChildren(...next.map(point => new Option(focusLabel(point), point.id)));
         if (next.some(point => point.id === selected)) entity.value = selected;
       }
       points = next;

@@ -4,6 +4,7 @@ import * as markov from '../public/markov.js';
 import * as spatialMarkov from '../public/spatial-markov.js';
 import * as gridMarkov from '../public/grid-markov.js';
 import * as jointMarkov from '../public/joint-markov.js';
+import * as passValue from '../public/pass-value.js';
 import * as layout from '../public/layout.js';
 import * as help from '../public/settings-help.js';
 import * as integrity from '../public/integrity.js';
@@ -26,17 +27,22 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  const context2d=new Proxy({},{get:(context,name)=>(...args)=>paint.push({name,args,alpha:context.globalAlpha})});
  const element=id=>{if(!els.has(id)){const e={id,clientWidth:240,clientHeight:145,style:{setProperty(){}},listeners:new Map(),classList:{toggle(){}},value:({viewMode:'tiling',integrityColour:'control',mode:'triangles',team:'all',colour:'danger',duration:'30',speed:'1',chanceFilter:'high',start:'10'})[id]??'',checked:['ball','showReceiving'].includes(id),options:[],textContent:'',hidden:false,disabled:false,addEventListener(k,fn){this.listeners.set(k,fn);},getBoundingClientRect(){return mobile?{width:390,height:260,left:0,top:0}:{width:1000,height:625,left:0,top:0};},getContext(){return context2d;},scrollIntoView(){this.scrolled=true;},matches(selector){return selector===':popover-open'?!!this.popOpen:false;},showPopover(){this.popOpen=true;},hidePopover(){this.popOpen=false;},show(){this.open=true;},showModal(){this.open=true;},close(){this.open=false;},getAttribute(k){return this[k]??null;},setAttribute(k,v){this[k]=v;},add(o){this.options.push(o);},replaceChildren(...options){this.options=options;this.value=options[0]?.value??'';}};Object.defineProperty(e,'selectedOptions',{get:()=>e.options.filter(o=>o.value===e.value)});els.set(id,e);}return els.get(id);};
  const jobs=[];
+ let annotatedPasses=[];
  const sandbox={...optimizer,...optimizerPath,Worker:class{constructor(url){this.url=url;jobs.push(this);}postMessage(data){this.data=data;}terminate(){this.terminated=true;}},...geometry,...danger,...access,...possession,...passing,...integrity,...passPlayback,...help,...layout,setTimeout,clearTimeout,ImageData:class {constructor(data,width,height){Object.assign(this,{data,width,height});}},devicePixelRatio:3,performance:{now:()=>0},requestAnimationFrame(){},window:{matchMedia:()=>({matches:mobile}),addEventListener(k,fn){events.set(k,fn);}},document:{createElement:()=>element('offscreen'),addEventListener(){},getElementById:element,body:{classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k),contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k)}}},Option:class{constructor(text,value){this.textContent=text;this.value=value;}},fetch:async url=>{
  requests.push(url);let data;if(url==='/demo.json')data=demo;else if(url==='/api/matches')data=[{id:1886347,label:'Test match'}];else if(url.endsWith('/passing'))data={valueModel:JSON.parse(await readFile(new URL('../../notebooks/fitted/value_model.json',import.meta.url),'utf8')),options:[],passes:[],settings:JSON.parse(await readFile(new URL('../../notebooks/fitted/pitch_control_settings.json',import.meta.url),'utf8')).settings,physical:Object.fromEntries(demo.metadata.players.map(p=>[p.id,{vmax:8,amax:5}])),runs:[]};else if(url.endsWith('/metadata'))data=demo.metadata;else if(url.endsWith('/phases'))data=[];else if(url.endsWith('/chances'))data={chances};else if(url.includes('/clip?')){const u=new URL(url,'http://test'),start=Number(u.searchParams.get('start'));data=demo.frames.slice(0,281).map((f,i)=>({...f,frame:start+i,period:2}));}else throw Error(url);return {ok:true,json:async()=>data};}};
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
- Object.assign(sandbox,markov,spatialMarkov,gridMarkov,jointMarkov);
+ Object.assign(sandbox,markov,spatialMarkov,gridMarkov,jointMarkov,passValue);
  let animation, now=0;
  sandbox.requestAnimationFrame=callback=>{if(callback.name==='tick')animation=callback;};
  sandbox.performance.now=()=>now;
  const fetchViewer=sandbox.fetch;
- sandbox.fetch=async url=>['/markov-fit.json','/spatial-markov-fit.json','/grid-markov-fit.json','/joint-markov-fit.json'].includes(url)
-  ? {ok:true,json:async()=>JSON.parse(await readFile(new URL('../public'+url,import.meta.url),'utf8'))}
-  : fetchViewer(url);
+ sandbox.fetch=async url=>{
+  if(['/markov-fit.json','/spatial-markov-fit.json','/grid-markov-fit.json','/joint-markov-fit.json','/pass-value-fit.json'].includes(url))
+   return {ok:true,json:async()=>JSON.parse(await readFile(new URL('../public'+url,import.meta.url),'utf8'))};
+  const response=await fetchViewer(url);
+  if(url.endsWith('/passing'))return {...response,json:async()=>({...await response.json(),passes:annotatedPasses})};
+  return response;
+ };
  const createElement=sandbox.document.createElement;
  sandbox.document.createElement=tag=>tag==='canvas'?createElement(tag):{
   children:[],append(...children){this.children.push(...children);},setAttribute(){},
@@ -53,6 +59,9 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  const jointView=(await readFile(new URL('../public/joint-markov-view.js',import.meta.url),'utf8'))
   .replace(/^import .*;\r?\n/gm,'').replace('export function','function');
  sandbox.createJointMarkovView=vm.runInNewContext(`(()=>{${jointView}\nreturn createJointMarkovView;})()`,sandbox);
+ const passView=(await readFile(new URL('../public/pass-value-view.js',import.meta.url),'utf8'))
+  .replace(/^import .*;\r?\n/gm,'').replace('export function','function');
+ sandbox.createPassValueView=vm.runInNewContext(`(()=>{${passView}\nreturn createPassValueView;})()`,sandbox);
  const client=(await readFile(new URL('../public/client.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
  await vm.runInNewContext(`(async()=>{${client}\n})()`,sandbox);
  assert.equal(element('viewMarkov')['aria-pressed'],'true','Kolmogorov starts selected');
@@ -62,6 +71,8 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.match(element('markovJointFit').textContent,/complete training transitions/);
  assert.equal(element('markovJointEntity').disabled,false);
  assert.equal(element('markovJointEntity').options.length,21);
+ assert.ok(element('markovJointEntity').options.slice(1).every(option=>/^#\d+ /.test(option.textContent)));
+ assert.match(element('markovPassValidation').textContent,/training frames/);
  element('viewOptimizer').onclick();
  assert.equal(element('optimizerSettings').hidden,false);
  assert.equal(element('meshOptions').hidden,true);
@@ -222,15 +233,15 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.equal(stepPlayback(1000).length,0,'there is no previous projection at the first hold');
  assert.equal(Number(element('scrub').value),10);
  assert.equal(stepPlayback(1999).length,0);
- assert.equal(stepPlayback(2000).length,21,'the new projection appears after the first second');
+ assert.equal(stepPlayback(2000).length,20,'the new outfield projection appears without a ball forecast when possession is unknown');
  assert.equal(element('markovJointEntity').value,initialFocus.value);
  stepPlayback(3999);
  assert.equal(Number(element('scrub').value),10);
  stepPlayback(4100);
  assert.equal(Number(element('scrub').value),11,'the actual tracking advances after the three-second hold');
- assert.equal(stepPlayback(5000).length,21);
+ assert.equal(stepPlayback(5000).length,20);
  assert.equal(Number(element('scrub').value),20);
- assert.deepEqual(stepPlayback(5500).map(call=>call.alpha),Array(21).fill(0.5),'the previous projection fades at the next hold');
+ assert.deepEqual(stepPlayback(5500).map(call=>call.alpha),Array(20).fill(0.5),'the previous projection fades at the next hold');
  assert.deepEqual(stepPlayback(6000).map(call=>call.alpha),Array(21).fill(1),'the new projection replaces the previous one');
  element('play').onclick();
  element('scrub').value=20;
@@ -248,6 +259,21 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('markovMode').value='backward';
  element('markovMode').oninput();
  assert.match(element('markovJointReadout').textContent,/chance that Ball is in the target after 1 s/);
+ assert.match(element('markovPassValue').textContent,/EPV/);
+ const release=demo.frames[35],carrier=release.possession.player_id,team=demo.metadata.away_team.id;
+ const receiver=demo.metadata.players.find(player=>player.team_id===team&&player.id!==carrier
+  &&release.player_data.some(point=>point.player_id===player.id));
+ const clipStart=Number(element('start').value);
+ annotatedPasses=[{id:'test-pass',release:clipStart+35,complete:clipStart+45,period:2,carrier,team,target:receiver.id}];
+ await element('load').onclick();
+ element('markovJointEntity').value='ball';
+ element('scrub').value=37;
+ element('scrub').oninput();
+ assert.match(element('markovJointReadout').textContent,/recorded intended receiver.*modeled completion/);
+ assert.match(element('markovPassValue').textContent,/Unavailable during transit/);
+ element('scrub').value=45;
+ element('scrub').oninput();
+ assert.match(element('markovPassValue').textContent,/EPV/);
  element('markovMode').value='forward';
  element('markovModel').value='grid';
  await element('markovModel').onchange();

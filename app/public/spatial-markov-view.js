@@ -1,4 +1,4 @@
-import { radius80, recentVelocity, rectangleProbability, spatialEntities, spatialForecast } from './spatial-markov.js';
+import { focusLabel, radius80, recentVelocity, rectangleProbability, spatialEntities, spatialForecast } from './spatial-markov.js';
 
 const percent = value => Math.round(value * 100) + '%';
 const metres = value => value.toFixed(1) + ' m';
@@ -58,7 +58,7 @@ export function createSpatialMarkovView(get, element) {
       const next = spatialEntities(frame, roster);
       if (next.map(point => point.id).join() !== entities?.map(point => point.id).join()) {
         const selected = entity.value;
-        entity.replaceChildren(...next.map(point => new Option(point.name, point.id)));
+        entity.replaceChildren(...next.map(point => new Option(focusLabel(point), point.id)));
         if (next.some(point => point.id === selected)) entity.value = selected;
       }
       entities = next;

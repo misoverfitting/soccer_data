@@ -18,6 +18,16 @@
   <label id="markovHorizonField" hidden>Time ahead <output id="markovSeconds" for="markovHorizon">5 s</output><input id="markovHorizon" type="range" min="0" max="20" step="1" value="5"></label>
  </div>
  <div id="markovJoint">
+  <section class="markov-pass-chart" aria-labelledby="markovPassTitle">
+   <h3 id="markovPassTitle">Passing advantage</h3>
+   <p id="markovPassValue"></p>
+   <canvas id="markovPassChart" role="img" aria-label="Passing advantage by clip time"></canvas>
+   <details>
+    <summary>How passing advantage was fitted</summary>
+    <p>The target is the best expected net EPV gain among tracked passing options in the existing pass evaluator. The regression uses the ball and both teams’ positions at the selected frame. It estimates the best modeled option, including when the player chose to keep the ball.</p>
+    <p id="markovPassValidation"></p>
+   </details>
+  </section>
   <label>Focus<select id="markovJointEntity"></select></label>
   <label>Sampled next frame <output id="markovJointScenarioNumber" for="markovJointScenario">1</output><input id="markovJointScenario" type="range" min="1" max="128" value="1"></label>
   <label id="markovJointTargetField" hidden>Target area<select id="markovJointTarget">
@@ -39,7 +49,7 @@
    <p>Each input includes the ball and the 20 outfield players, with their 1 m cells, signed one-second velocities, and distances to the ball. Players are ordered by depth within each team from its own goal, and keep their identity across the transition.</p>
    <p>One regularized regression maps the entire snapshot to 42 mean displacement coordinates. A single correlated Gaussian draw gives a displacement vector for the whole frame. Rounding yields integer cell movements, which determine both the next positions and velocities. The backward tool sums the selected entity’s marginal cell probabilities in the target area.</p>
    <p>Leave-one-match-out validation on nine games selected the regression penalty and covariance shrinkage. Training required the same 20 outfield players and ball at the previous, current, and next snapshots. Substitutions, red cards, and missing tracks can leave a frame outside the model.</p>
-   <p>The fitted covariance captures co-movement around the predicted positions. The model uses a single Gaussian per snapshot and can place players off the pitch. It has no explicit rule for passes, collisions, or possession.</p>
+   <p>The fitted covariance captures co-movement around the predicted positions. A recorded pass switches the ball to the existing receiver and pass-completion model. The flight uses the recorded release and reception times, with the intended receiver when available or the top modeled option otherwise. The highlighted flight cell represents the modeled successful path. Failed-pass destinations remain unspecified.</p>
   </details>
   <details>
    <summary>Held-out validation</summary>

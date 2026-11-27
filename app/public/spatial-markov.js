@@ -1,5 +1,6 @@
 export const spatialKinds = ['player', 'ball'];
 export const hasPosition = point => Number.isFinite(point?.x) && Number.isFinite(point?.y);
+export const focusLabel = point => point.number == null ? point.name : `#${point.number} ${point.name}`;
 
 export function spatialEntities(frame, roster) {
   if (!frame) return [];
@@ -8,7 +9,7 @@ export function spatialEntities(frame, roster) {
     if (!player || player.player_role?.name === 'Goalkeeper' || !hasPosition(point)) return [];
     return [{
       id: String(point.player_id), kind: 'player', team: player.team_id,
-      name: player.short_name ?? player.name ?? String(point.player_id), x: point.x, y: point.y,
+      name: player.short_name ?? player.name ?? String(point.player_id), number: player.number, x: point.x, y: point.y,
     }];
   });
   return hasPosition(frame.ball_data)

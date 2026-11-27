@@ -27,7 +27,12 @@
   </select></label>
   <p id="markovJointStatus" role="status"></p>
   <p id="markovJointReadout"></p>
-  <p class="note">Squares show one possible whole frame a second ahead. The heatmap shows the focused entity’s cell probabilities across all possible frames.</p>
+  <div id="markovJointLegend" class="joint-probability-legend" hidden>
+   <p>Probability per 1 m cell after 1 s</p>
+   <div class="joint-probability-gradient" aria-hidden="true"></div>
+   <div class="joint-probability-ticks"><span>0% · lower</span><span id="markovJointLegendMid"></span><span><span id="markovJointLegendMax"></span> · higher</span></div>
+  </div>
+  <p class="note">Squares show one possible whole frame a second ahead. The color scale updates for the focused entity and frame.</p>
   <details>
    <summary>Whole-frame transition and training</summary>
    <p>Each input includes the ball and the 20 outfield players, with their 1 m cells, signed one-second velocities, and distances to the ball. Players are ordered by depth within each team from its own goal, and keep their identity across the transition.</p>

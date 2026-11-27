@@ -179,6 +179,8 @@ body.pitch-focus{overflow:hidden}
 #markovPanel h2{font-size:19px;margin-bottom:8px}
 #markovPanel p{color:#b7cbd1;line-height:1.5;margin:8px 0}
 #markovPanel a{color:#a6ead0}
+.joint-probability-gradient{height:8px;border-radius:4px;background:linear-gradient(90deg,hsl(0 85% 53%),hsl(60 85% 53%),hsl(120 85% 53%))}
+.joint-probability-ticks{display:flex;justify-content:space-between;gap:8px;margin-top:4px;color:#b7cbd1;font-size:12px;font-variant-numeric:tabular-nums}
 #markovHorizon{padding:0;accent-color:#a6ead0}
 #markovSeconds{float:right;color:#e1ecee;font-variant-numeric:tabular-nums}
 #markovOutput{list-style:none;padding:0;margin:10px 0 16px}

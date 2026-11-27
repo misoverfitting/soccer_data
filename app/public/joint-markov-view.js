@@ -59,6 +59,7 @@ export function createJointMarkovView(get, element) {
     if (!snapshot) {
       status.textContent = 'Choose a frame with the ball and all 20 outfield players tracked now and one second earlier.';
       readout.textContent = '';
+      element('markovJointLegend').hidden = true;
       return;
     }
     const focusIndex = Math.max(0, snapshot.points.findIndex(point => point.id === entity.value));
@@ -81,6 +82,11 @@ export function createJointMarkovView(get, element) {
         }
       }
       heatmap = { cells, peak, onPitch };
+      element('markovJointLegend').hidden = !peak?.p;
+      if (peak?.p) {
+        element('markovJointLegendMid').textContent = percent(peak.p / 2);
+        element('markovJointLegendMax').textContent = percent(peak.p);
+      }
     }
     const seed = (frame.frame * 2654435761 + Number(scenario.value) * 1597334677) >>> 0;
     nextFrame = sampleJointFrame(fit, snapshot, mean, seed);
@@ -101,10 +107,11 @@ export function createJointMarkovView(get, element) {
     ctx.beginPath();
     ctx.rect(...px(-length / 2, width / 2), length * scale, width * scale);
     ctx.clip();
-    ctx.fillStyle = '#ffbc62';
     for (const { x, y, p } of heatmap.cells) {
       if (p < heatmap.peak.p / 300 || !p) continue;
-      ctx.globalAlpha = 0.75 * Math.sqrt(p / heatmap.peak.p);
+      const relative = p / heatmap.peak.p;
+      ctx.fillStyle = `hsl(${120 * relative} 85% 53%)`;
+      ctx.globalAlpha = 0.30 + 0.55 * Math.sqrt(relative);
       ctx.fillRect(...px(x, y + 1), scale, scale);
     }
     ctx.globalAlpha = 1;

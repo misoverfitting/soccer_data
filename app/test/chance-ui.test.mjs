@@ -200,6 +200,8 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('scrub').oninput();
  assert.equal(element('markovJointEntity').options.length,21);
  assert.match(element('markovJointReadout').textContent,/In this sampled frame/);
+ assert.equal(element('markovJointLegend').hidden,false);
+ assert.match(element('markovJointLegendMax').textContent,/\d%$/);
  element('markovJointScenario').value='12';
  element('markovJointScenario').oninput();
  assert.equal(element('markovJointScenarioNumber').textContent,'12');

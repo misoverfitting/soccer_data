@@ -711,6 +711,7 @@ function setViewMode(value){
  $('viewOptimizer').setAttribute('aria-pressed',String(optimizer));
  $('viewMarkov').setAttribute('aria-pressed',String(markov));
  $('markovPanel').hidden=!markov;
+ $('tileInspector').hidden=markov;
  $('help-viewIntegrity').hidden=!integrity;
  if(!optimizer)$('showReceiving').checked=integrity?integrityHalos:tilingHalos;
  document.body.classList.toggle('integrity-view',integrity);

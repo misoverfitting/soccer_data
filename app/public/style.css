@@ -171,8 +171,7 @@ body.pitch-focus{overflow:hidden}
 }
 
 .view-toggle{flex-wrap:wrap}
-.markov-view #controls,.markov-view .disclosure-triangle,.markov-view .tiling-edge-legend,
-.markov-view #clipDetails article{display:none}
+.markov-view #controls,.markov-view .disclosure-triangle,.markov-view .tiling-edge-legend{display:none}
 .markov-view #toggleDanger:disabled{cursor:default;opacity:1}
 .markov-view #pitch{cursor:default}
 #markovPanel{padding:18px;border:1px solid #293a41;border-radius:12px;background:#142128;align-self:start}

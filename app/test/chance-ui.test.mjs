@@ -67,6 +67,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.equal(element('viewMarkov')['aria-pressed'],'true','Kolmogorov starts selected');
  assert.equal(element('viewOptimizer')['aria-pressed'],'false');
  assert.equal(element('markovPanel').hidden,false);
+ assert.equal(element('tileInspector').hidden,true);
  assert.equal(element('markovJoint').hidden,false);
  assert.match(element('markovJointFit').textContent,/complete training transitions/);
  assert.equal(element('markovJointEntity').disabled,false);
@@ -82,6 +83,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.equal(element('integritySettings').hidden,false);assert.equal(element('showReceiving').checked,false);assert.equal(element('help-viewIntegrity').hidden,false);
  element('help-viewIntegrity').onpointerenter({pointerType:'mouse'});assert.match(element('settingHelpText').textContent,/Fitted notebook model/);
  element('viewTiling').onclick();assert.equal(element('settingTooltip').popOpen,false);assert.equal(element('help-viewIntegrity').hidden,true);
+ assert.equal(element('tileInspector').hidden,false);
  element('help-viewIntegrity').onpointerenter({pointerType:'mouse'});assert.equal(element('settingTooltip').popOpen,false,'no right-toggle tooltip while unselected');
  assert.equal(element('chance').value,chances.find(c=>c.highDanger).id);
  assert.equal(requests.filter(r=>r.includes('/clip?')).length,1);

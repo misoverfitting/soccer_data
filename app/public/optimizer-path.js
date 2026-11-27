@@ -76,7 +76,7 @@ export function plausibleSamples(frames, meta, physical) {
     }));
     if (!defenders.length || defenders.some(p => !p.reachable.length)) return { index };
     const keeper = future.scene.defenders.find(p => p.id === future.keeper.id);
-    defenders.unshift({ id: keeper.id, vmax: keeper.vmax, amax: keeper.amax, bounds: keeper.bounds,
+    defenders.unshift({ id: keeper.id, gk: true, vmax: keeper.vmax, amax: keeper.amax, bounds: keeper.bounds,
       reachable: [{ x: future.keeper.x, y: future.keeper.y }] });
     return { index, tracked, keeperId: keeper.id, scene: { ...future.scene, defenders, restarts: 1 } };
   });

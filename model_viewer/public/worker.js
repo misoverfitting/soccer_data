@@ -1,6 +1,6 @@
 // One worker per model version. It computes every frame of the loaded clip, starting at the playhead
 // ("focus") and working forwards, and sends back all six surfaces quantised to Int16 (value × 32767),
-// plus the frame's integrity and danger.
+// plus the frame's integrity and both danger scores.
 import {createModel} from './model.js';
 
 let model = null, version = null, states = [], done = [], clipId = -1, focus = 0, busy = false;
@@ -28,9 +28,12 @@ function step() {
     const out = model.compute(s, version), N = model.N, q = new Int16Array(6 * N);
     const put = (arr, off) => { for (let k = 0; k < N; k++) q[off + k] = Math.round(Math.max(-1, Math.min(1, arr[k])) * 32767); };
     put(out.pAtt, 0); put(out.pSucc, N); put(out.value, 2 * N); put(out.gain, 3 * N); put(out.protect, 4 * N); put(out.keepView, 5 * N);
-    // danger: the frame's score, and each attacker's 1 s-ahead spot and share of it (attacking frame, player ids)
-    const danger = Number.isFinite(out.danger) ? {D: out.danger, who: out.dangerWho >= 0 ? s.ids[out.dangerWho] : null,
-      list: out.dangerList.map(a => ({id: s.ids[a.i], x: a.x, y: a.y, c: a.contrib, def: a.def >= 0 ? s.ids[a.def] : null}))} : null;
+    // danger: the frame's score, the attackers behind it, and each attacker's projected spot and share of it
+    // (attacking frame, player ids). ext = Section 8f (top two free attackers, 3 s ahead); d8 = Section 8d (most dangerous, 1 s ahead)
+    const pack = (D, who, list) => Number.isFinite(D) ? {D, who: who.map(i => s.ids[i]),
+      list: list.map(a => ({id: s.ids[a.i], x: a.x, y: a.y, c: a.contrib, def: a.def >= 0 ? s.ids[a.def] : null}))} : null;
+    const danger = {ext: pack(out.dangerExt, out.dangerExtWho, out.dangerExtList),
+                    d8: pack(out.danger, out.dangerWho >= 0 ? [out.dangerWho] : [], out.dangerList)};
     self.postMessage({clipId, version, i, q, vBall: out.vBall, integrity: out.integrity, danger, carrier: out.carrier}, [q.buffer]);
   }
   schedule();

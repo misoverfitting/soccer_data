@@ -78,7 +78,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('viewIntegrity').onclick();assert.equal(element('viewIntegrity')['aria-pressed'],'true');
  assert.equal(element('integritySettings').hidden,false);assert.equal(element('tilingSettings').hidden,true);assert.equal(element('showReceiving').checked,false);
  element('scrub').value=100;element('scrub').oninput();
- for(const kind of ['control','danger','pass','tiles']){element('integrityColour').value=kind;element('integrityColour').onchange();assert.match(element('inspect').textContent,/Integrity \(value-weighted protection\)/);}
+ for(const kind of ['control','danger','pass','tiles']){element('integrityColour').value=kind;element('integrityColour').onchange();assert.match(element('inspect').textContent,/Integrity \(value-weighted protection\)/);assert.match(element('inspect').textContent,/Danger \(top two free attackers, 3 s ahead\)/);}
  element('help-integrityColour').onclick();assert.match(element('settingHelpTitle').textContent,/Defensive Tiling/);
  element('integrityColour').value='control';element('integrityColour').listeners.get('change')();assert.match(element('settingHelpText').textContent,/arrival-time race/);assert.equal(element('settingHelpEquation').hidden,false);assert.match(element('settingHelpEquation').textContent,/P_att =/);
  element('integrityColour').value='danger';element('legacyDanger').checked=true;element('legacyDanger').onchange();element('legacyDanger').listeners.get('change')();assert.match(element('fillLegend').textContent,/Legacy potential danger/);assert.match(element('settingHelpTitle').textContent,/legacy definition/);
@@ -104,7 +104,7 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  assert.deepEqual(keeper.bounds,{minX:tracked.x,maxX:tracked.x,minY:tracked.y,maxY:tracked.y});
  const beforeResult=paint.length;
  job.onmessage({data:{result:{value:0.125,defenders:[{id:keeper.id,x:tracked.x,y:tracked.y}]}}});
- assert.match(element('optimizerStatus').textContent,/Danger 0.125/);
+ assert.match(element('optimizerStatus').textContent,/Threat 0.125/);
  assert.ok(paint.slice(beforeResult).some(c=>c.name==='fillText'&&c.args[0]==='GK'));
  element('findOptimum').onclick();
  const pending=jobs.at(-1);

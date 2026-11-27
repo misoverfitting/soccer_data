@@ -63,6 +63,17 @@ for (const c of cases) {
     }
     assert.equal(model.compute(s, 'v3').danger, model.compute(s, 'v2').danger, 'carries do not change danger');
   });
+  test(`frame ${c.frame}: extended danger (top two free attackers, 3 s ahead) matches the notebook`, () => {
+    const s = toState(c);
+    for (const v of ['v0', 'v2', 'v3']) {
+      const o = model.compute(s, v);
+      assert.ok(Math.abs(o.dangerExt - c[v].danger_ext) < 1e-6, `${v}: notebook ${c[v].danger_ext}, viewer ${o.dangerExt}`);
+      assert.deepEqual(o.dangerExtWho.map(i => c.players[i].id), c[v].danger_ext_who, `${v}: same two free attackers`);
+      const shares = o.dangerExtList.map(a => a.contrib).sort((a, b) => b - a);
+      assert.ok(Math.abs(o.dangerExt - (shares[0] + (shares[1] ?? 0))) < 1e-12, 'the sum of the two largest shares');
+    }
+    assert.equal(model.compute(s, 'v3').dangerExt, model.compute(s, 'v2').dangerExt, 'carries do not change extended danger');
+  });
   test(`frame ${c.frame}: v0 and v2 have no carries; v3 is v2 plus the better of passing and carrying`, () => {
     const s = toState(c);
     for (const v of ['v0', 'v2']) { const o = model.compute(s, v); assert.ok(o.pKeep.every(x => x === 0) && o.carrier === -1, v); }

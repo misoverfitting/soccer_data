@@ -1,6 +1,6 @@
 // Pitch control, value and carry models: a line-for-line port of Sections 2–4c of
 // notebooks/defensive_shape_integrity.ipynb (pitch_control, time_to_reach, context_value, carry_options),
-// plus the danger score of Section 8d (free_attacker_danger).
+// plus the danger scores of Section 8d (free_attacker_danger) and Section 8f (danger_ext: top two free attackers, 3 s ahead).
 // Runs in the browser and in Node (tests compare it with the Python output in test/fixtures.json).
 //
 // Every computation is in the ATTACKING frame: the team in possession attacks towards +x,
@@ -213,24 +213,30 @@ export function createModel(models) {
   }
 
   /**
-   * Danger (Section 8d, free_attacker_danger): how dangerous is the most dangerous attacker the defence has left free?
-   * Each outfield attacker except the one nearest the ball is projected 1 s ahead (position + velocity). Outfield defenders
-   * are assigned one attacker each (minimum total arrival time). An attacker is covered if their defender arrives within
-   * ball travel + T_CONTROL, halved if the defender is not goal-side. Danger = max over attackers of V × (1 − covered),
-   * with V the version's value (context value in v2/v3, location value in v0).
-   * Returns {danger, who, list}: who = state index of that attacker; list = per attacker {i, x, y, contrib, def}.
+   * Danger: how dangerous are the attackers the defence has left free?
+   * Each outfield attacker except the one nearest the ball is projected `ahead` seconds ahead (position + velocity).
+   * Outfield defenders are assigned one attacker each (minimum total arrival time). An attacker is covered if their
+   * defender arrives within ball travel + T_CONTROL, halved if the defender is not goal-side. Each attacker's share is
+   * V × (1 − covered), with V the version's value (context value in v2/v3, location value in v0), and the score is the
+   * sum of the `top` largest shares.
+   *   Section 8d (free_attacker_danger, free_ctx_1s): ahead = 1, top = 1 → the most dangerous free attacker in 1 s.
+   *   Section 8f (danger_ext, free_top2_3s):          ahead = 3, top = 2 → the two most dangerous free attackers in 3 s.
+   * Returns {danger, who, list}: who = state indices of the top attackers (most dangerous first);
+   * list = per attacker {i, x, y, contrib, def}.
    */
   const T_CONTROL = models.constants.T_CONTROL ?? 1.0, HALF_W = models.grid.half_w;
-  function danger(s, set, f, value) {
+  const DANGER_8D = {ahead: 1, top: 1}, DANGER_EXT = {ahead: 3, top: 2};
+  function danger(s, set, f, value, {ahead, top}) {
     const gk = s.gk || new Uint8Array(s.n);
     const att = [], dfs = [];
     for (let i = 0; i < s.n; i++) (s.att[i] ? att : dfs).push(i);
     const atts = att.filter(i => !gk[i]), defs = dfs.filter(i => !gk[i]);
-    if (!atts.length) return {danger: NaN, who: -1, list: []};
+    if (!atts.length) return {danger: NaN, who: [], list: []};
     let near = atts[0], nd = Infinity;
     for (const i of atts) { const d = Math.hypot(s.x[i] - s.ball[0], s.y[i] - s.ball[1]); if (d < nd) { nd = d; near = i; } }
     const tg = atts.filter(i => i !== near);
-    const ax = tg.map(i => clip(s.x[i] + s.vx[i], -HALF_L + 0.5, HALF_L - 0.5)), ay = tg.map(i => clip(s.y[i] + s.vy[i], -HALF_W + 0.5, HALF_W - 0.5));
+    const ax = tg.map(i => clip(s.x[i] + ahead * s.vx[i], -HALF_L + 0.5, HALF_L - 0.5));
+    const ay = tg.map(i => clip(s.y[i] + ahead * s.vy[i], -HALF_W + 0.5, HALF_W - 0.5));
     const T = defs.map(d => tg.map((_, a) => arrive(s, d, f, set, ax[a], ay[a])));
     const defOf = new Int32Array(tg.length).fill(-1);
     if (defs.length && tg.length) {
@@ -238,7 +244,6 @@ export function createModel(models) {
       else assign(tg.map((_, a) => defs.map((_, d) => T[d][a])), tg.length, defs.length).forEach((d, a) => { defOf[a] = d; });
     }
     const K = Math.PI / (Math.sqrt(3) * set.SIGMA);
-    let best = -1, D = -Infinity;
     const list = tg.map((i, a) => {
       let cov = 0; const d = defOf[a];
       if (d >= 0) {
@@ -247,10 +252,12 @@ export function createModel(models) {
         cov = sig(K * (tBall + T_CONTROL - T[d][a])) * (goalSide ? 1 : 0.5);
       }
       const contrib = value[lookup(ax[a], ay[a])] * (1 - cov);
-      if (contrib > D) { D = contrib; best = a; }
       return {i, x: ax[a], y: ay[a], contrib, def: d >= 0 ? defs[d] : -1};
     });
-    return {danger: tg.length ? D : NaN, who: best >= 0 ? tg[best] : -1, list};
+    // the `top` largest shares, most dangerous first (a stable sort keeps the first attacker on ties, like the notebook's argmax)
+    const ranked = list.map((a, k) => k).sort((p, q) => list[q].contrib - list[p].contrib).slice(0, top);
+    const D = ranked.reduce((sum, k) => sum + list[k].contrib, 0);
+    return {danger: tg.length ? D : NaN, who: ranked.map(k => list[k].i), list};
   }
 
   /**
@@ -262,8 +269,9 @@ export function createModel(models) {
    *          'v3' (v2 plus carries).
    * Returns Float64Arrays over the 105 × 68 grid (row = y): pAtt, pSucc, value, gain (best of pass or carry),
    * gainPass, pKeep (0 without carries), keepView (P_keep, or NO_CARRY where no carry is possible), protect;
-   * and vBall, integrity, danger (+ dangerWho, dangerList), carrier (index or −1).
- * s.gk (optional): 1 for goalkeepers, who are left out of the danger score as in the notebook.
+   * and vBall, integrity, danger (8d, + dangerWho, dangerList), dangerExt (8f, + dangerExtWho = the top two, dangerExtList),
+   * carrier (index or −1).
+ * s.gk (optional): 1 for goalkeepers, who are left out of the danger scores as in the notebook.
    */
   function compute(s, version) {
     const set = models.settings[version], withCarry = carriesOn(version);
@@ -289,9 +297,10 @@ export function createModel(models) {
     }
     if (!car) { pKeep0.fill(0); view0.fill(NO_CARRY); }
     const {protect, integrity} = protection(s, pAny, version);
-    const dz = danger(s, set, f, value);
+    const dz = danger(s, set, f, value, DANGER_8D), dx = danger(s, set, f, value, DANGER_EXT);
     return {pAtt, pSucc, value, gain, gainPass, pKeep: car ? car.pKeep : pKeep0, keepView: car ? car.keepView : view0,
-            vBall, protect, integrity, danger: dz.danger, dangerWho: dz.who, dangerList: dz.list,
+            vBall, protect, integrity, danger: dz.danger, dangerWho: dz.who[0] ?? -1, dangerList: dz.list,
+            dangerExt: dx.danger, dangerExtWho: dx.who, dangerExtList: dx.list,
             carrier: car ? car.carrier : -1};
   }
 

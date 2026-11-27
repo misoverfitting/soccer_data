@@ -30,8 +30,8 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     seed = 1, restarts = 3, searchGridStep = Math.min(5, Math.floor(pitchLength), Math.floor(pitchWidth)), minSpacing = 0.75,
   } = scene;
   const objective = String(metric).toLowerCase();
-  if (!['integrity', 'danger', 'epv'].includes(objective)) {
-    throw new Error('Metric must be Integrity, Danger, or EPV');
+  if (!['integrity', 'danger', 'freedanger', 'epv'].includes(objective)) {
+    throw new Error('Metric must be Integrity, Danger, FreeDanger, or EPV');
   }
   if (!['right', 'left'].includes(attackDirection)
       || ![pitchLength, pitchWidth].every(n => Number.isFinite(n) && n >= 1 && n <= 150)
@@ -70,27 +70,42 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     }
     return [i, { vmax, amax }];
   }));
+  // Free-attacker danger projects attackers 3 s ahead, so it reads their velocities (vx, vy, m/s; default 0).
+  // Every other metric keeps scoring a static picture, as before.
+  const moving = objective === 'freedanger';
+  if (moving && !attackers.every(({ vx = 0, vy = 0 }) => Number.isFinite(vx) && Number.isFinite(vy))) {
+    throw new Error('Attacker velocities must be finite');
+  }
   const flip = attackDirection === 'right' ? 1 : -1;
   const meta = {
     pitch_length: pitchLength, pitch_width: pitchWidth,
     home_team: { id: 0 }, away_team: { id: 1 },
     home_team_side: [flip === 1 ? 'left_to_right' : 'right_to_left'],
-    players: players.map((_, id) => ({ id, team_id: id < attackers.length ? 0 : 1 })),
+    // `gk: true` marks a goalkeeper: free-attacker danger leaves goalkeepers out, as the notebook does
+    players: players.map((p, id) => ({ id, team_id: id < attackers.length ? 0 : 1,
+      ...(p.gk ? { player_role: { name: 'Goalkeeper' } } : {}) })),
   };
   const data = { ...fitted, physical };
   const frame = {
-    frame: 0, period: 1, ball_data: ball, possession: { group: 'home team' },
+    frame: 2, period: 1, ball_data: ball, possession: { group: 'home team' },
     player_data: attackers.map(({ x, y }, player_id) => ({ x, y, player_id })),
   };
-  const searchPoints = objective === 'epv' ? [] : gridPoints(pitchLength, pitchWidth, searchGridStep);
-  const finalPoints = objective === 'epv' ? [] : gridPoints(pitchLength, pitchWidth, 1);
+  // Neighbouring frames 0.2 s either side carry the attackers' velocities into the model (defenders stay at rest).
+  const shifted = (sign, frameNumber) => ({ frame: frameNumber, period: 1,
+    player_data: attackers.map(({ x, y, vx = 0, vy = 0 }, player_id) => ({ x: x + sign * 0.2 * vx, y: y + sign * 0.2 * vy, player_id })) });
+  const before = moving ? shifted(-1, 0) : null, after = moving ? shifted(1, 4) : null;
+  const gridless = objective === 'epv' || objective === 'freedanger';
+  const searchPoints = gridless ? [] : gridPoints(pitchLength, pitchWidth, searchGridStep);
+  const finalPoints = gridless ? [] : gridPoints(pitchLength, pitchWidth, 1);
   let evaluations = 0;
   function score(layout, points) {
     evaluations++;
     const defenderData = layout.map(({ x, y }, i) => ({ x, y, player_id: attackers.length + i }));
-    const model = buildIntegrity({ ...frame, player_data: [...frame.player_data, ...defenderData] }, null, null, meta, data);
+    const withDefenders = f => f && { ...f, player_data: [...f.player_data, ...defenderData] };
+    const model = buildIntegrity(withDefenders(frame), withDefenders(before), withDefenders(after), meta, data);
     if (model.reason) throw new Error(model.reason);
     if (objective === 'epv') return model.ballValue;
+    if (objective === 'freedanger') return model.freeDanger().danger;
     if (objective === 'danger') {
       let peak = -Infinity;
       for (const q of points) peak = Math.max(peak, model.evaluate(q).gain);
@@ -140,7 +155,7 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
   // Keep the full pitch grid as a fallback when the coarse grid misses the narrow region ahead of the ball.
   const coarse = objective === 'integrity' && !searchPoints.some(q => q.x * flip >= ball.x * flip - 5)
     ? finalPoints : searchPoints;
-  const useFinal = coarse === finalPoints || searchGridStep === 1 || objective === 'epv';
+  const useFinal = coarse === finalPoints || searchGridStep === 1 || gridless;
   const report = (layout, value) => ({
     value,
     defenders: layout.map((p, i) => ({ id: defenders[i].id ?? i + 1, ...p })),

@@ -13,11 +13,40 @@
 <section id="markovPanel" hidden aria-labelledby="markovTitle">
  <h2 id="markovTitle">Kolmogorov equations</h2>
  <div class="markov-controls">
-  <label>State model<select id="markovModel"><option value="spatial">Player and ball positions</option><option value="coarse">Possession thirds</option></select></label>
+  <label>State model<select id="markovModel"><option value="grid">1 m grid · one-second transition</option><option value="spatial">Continuous player and ball positions</option><option value="coarse">Possession thirds</option></select></label>
   <label>Equation<select id="markovMode"><option value="forward">Forward distribution</option><option value="backward">Backward target probability</option></select></label>
-  <label>Time ahead <output id="markovSeconds" for="markovHorizon">5 s</output><input id="markovHorizon" type="range" min="0" max="20" step="1" value="5"></label>
+  <label id="markovHorizonField" hidden>Time ahead <output id="markovSeconds" for="markovHorizon">5 s</output><input id="markovHorizon" type="range" min="0" max="20" step="1" value="5"></label>
  </div>
- <div id="markovSpatial">
+ <div id="markovGrid">
+  <label>Focus<select id="markovGridEntity"></select></label>
+  <label id="markovGridTargetField" hidden>Target area<select id="markovGridTarget">
+   <option value="0">Upper left</option><option value="1">Upper middle</option><option value="2">Upper right</option>
+   <option value="3">Center left</option><option value="4" selected>Center of pitch</option><option value="5">Center right</option>
+   <option value="6">Lower left</option><option value="7">Lower middle</option><option value="8">Lower right</option>
+  </select></label>
+  <p id="markovGridStatus" role="status"></p>
+  <p id="markovGridReadout"></p>
+  <p class="note">Brighter cells have higher probability at +1 s. The white square marks the current cell. Cell coordinates label the lower-left corner.</p>
+  <details>
+   <summary>One-second transition equation</summary>
+   <p>For each tracked outfield player and the ball, <code>Sₜ = (Cₜ, Vₜ)</code>. The position <code>Cₜ</code> is the 1 m cell and <code>Vₜ = Cₜ − Cₜ₋₁</code> is signed displacement over the previous second. This counts net displacement on each axis.</p>
+   <p>The fitted model assigns a probability to each next displacement <code>d</code>. Then <code>Sₜ₊₁ = (Cₜ + d, d)</code>. The discrete forward equation is <code>pₜ₊₁(s′) = Σₛ pₜ(s) P(s, s′)</code>. The viewer starts with all mass at the observed state. The backward region probability sums the next-cell probabilities whose centers lie inside the selected area.</p>
+   <p>Training counts next displacements by velocity bin, with an optional pitch-zone group. Sparse groups borrow probability from pooled counts. The model forecasts each entity independently.</p>
+  </details>
+  <details>
+   <summary>Grid fit and held-out validation</summary>
+   <p id="markovGridFit"></p>
+   <p><strong>Outfield</strong> <span id="markovGridPlayerSettings"></span></p>
+   <p><strong>Ball</strong> <span id="markovGridBallSettings"></span></p>
+   <p>Leave-one-match-out tuning selected velocity bin width and smoothing on the nine training matches. The pooled baseline predicts displacement without velocity or zone.</p>
+   <div class="markov-table"><table>
+    <caption>Held-out exact-cell log loss. Lower is better.</caption>
+    <thead><tr><th scope="col">Entity</th><th scope="col">Windows</th><th scope="col">Grid model</th><th scope="col">Pooled baseline</th></tr></thead>
+    <tbody id="markovGridValidation"></tbody>
+   </table></div>
+  </details>
+ </div>
+ <div id="markovSpatial" hidden>
   <p id="markovSpatialSnapshot" role="status"></p>
   <label>Focus<select id="markovEntity"></select></label>
   <label id="markovSpatialTargetField" hidden>Target area<select id="markovSpatialTarget">

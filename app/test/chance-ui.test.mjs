@@ -2,6 +2,7 @@ import * as optimizerPath from '../public/optimizer-path.js';
 import * as optimizer from '../public/optimizer-scene.js';
 import * as markov from '../public/markov.js';
 import * as spatialMarkov from '../public/spatial-markov.js';
+import * as gridMarkov from '../public/grid-markov.js';
 import * as layout from '../public/layout.js';
 import * as help from '../public/settings-help.js';
 import * as integrity from '../public/integrity.js';
@@ -27,9 +28,9 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  const sandbox={...optimizer,...optimizerPath,Worker:class{constructor(url){this.url=url;jobs.push(this);}postMessage(data){this.data=data;}terminate(){this.terminated=true;}},...geometry,...danger,...access,...possession,...passing,...integrity,...passPlayback,...help,...layout,setTimeout,clearTimeout,ImageData:class {constructor(data,width,height){Object.assign(this,{data,width,height});}},devicePixelRatio:3,performance:{now:()=>0},requestAnimationFrame(){},window:{matchMedia:()=>({matches:mobile}),addEventListener(k,fn){events.set(k,fn);}},document:{createElement:()=>element('offscreen'),addEventListener(){},getElementById:element,body:{classList:{toggle:(k,on)=>on?classes.add(k):classes.delete(k),contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k)}}},Option:class{constructor(text,value){this.textContent=text;this.value=value;}},fetch:async url=>{
  requests.push(url);let data;if(url==='/demo.json')data=demo;else if(url==='/api/matches')data=[{id:1886347,label:'Test match'}];else if(url.endsWith('/passing'))data={valueModel:JSON.parse(await readFile(new URL('../../notebooks/fitted/value_model.json',import.meta.url),'utf8')),options:[],passes:[],settings:JSON.parse(await readFile(new URL('../../notebooks/fitted/pitch_control_settings.json',import.meta.url),'utf8')).settings,physical:Object.fromEntries(demo.metadata.players.map(p=>[p.id,{vmax:8,amax:5}])),runs:[]};else if(url.endsWith('/metadata'))data=demo.metadata;else if(url.endsWith('/phases'))data=[];else if(url.endsWith('/chances'))data={chances};else if(url.includes('/clip?')){const u=new URL(url,'http://test'),start=Number(u.searchParams.get('start'));data=demo.frames.slice(0,281).map((f,i)=>({...f,frame:start+i,period:2}));}else throw Error(url);return {ok:true,json:async()=>data};}};
  vm.runInNewContext(await readFile(new URL('../public/d3-delaunay.min.js',import.meta.url),'utf8'),sandbox);
- Object.assign(sandbox,markov,spatialMarkov);
+ Object.assign(sandbox,markov,spatialMarkov,gridMarkov);
  const fetchViewer=sandbox.fetch;
- sandbox.fetch=async url=>['/markov-fit.json','/spatial-markov-fit.json'].includes(url)
+ sandbox.fetch=async url=>['/markov-fit.json','/spatial-markov-fit.json','/grid-markov-fit.json'].includes(url)
   ? {ok:true,json:async()=>JSON.parse(await readFile(new URL('../public'+url,import.meta.url),'utf8'))}
   : fetchViewer(url);
  const createElement=sandbox.document.createElement;
@@ -41,7 +42,10 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  vm.runInNewContext(markovView,sandbox);
  const spatialView=(await readFile(new URL('../public/spatial-markov-view.js',import.meta.url),'utf8'))
   .replace(/^import .*;\r?\n/gm,'').replaceAll('export function','function');
- sandbox.createSpatialMarkovView=vm.runInNewContext(`(()=>{${spatialView}\nreturn createSpatialMarkovView;})()`,sandbox);
+ Object.assign(sandbox,vm.runInNewContext(`(()=>{${spatialView}\nreturn {createSpatialMarkovView,spatialTarget};})()`,sandbox));
+ const gridView=(await readFile(new URL('../public/grid-markov-view.js',import.meta.url),'utf8'))
+  .replace(/^import .*;\r?\n/gm,'').replace('export function','function');
+ sandbox.createGridMarkovView=vm.runInNewContext(`(()=>{${gridView}\nreturn createGridMarkovView;})()`,sandbox);
  const client=(await readFile(new URL('../public/client.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
  await vm.runInNewContext(`(async()=>{${client}\n})()`,sandbox);
  assert.equal(element('viewOptimizer')['aria-pressed'],'true','Optimizer starts selected');
@@ -187,6 +191,20 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  await element('viewMarkov').onclick();
  assert.equal(element('markovPanel').hidden,false);
  assert.equal(element('viewMarkov')['aria-pressed'],'true');
+ assert.equal(element('markovGrid').hidden,false);
+ assert.equal(element('markovHorizonField').hidden,true);
+ assert.equal(element('markovGridValidation').options.length,2);
+ element('scrub').value=20;
+ element('scrub').oninput();
+ assert.match(element('markovGridReadout').textContent,/Most likely on-pitch cell.*next velocity/);
+ element('markovGridTarget').value='4';
+ element('markovMode').value='backward';
+ element('markovMode').oninput();
+ assert.match(element('markovGridReadout').textContent,/chance of being in the shaded region after 1 s/);
+ element('markovMode').value='forward';
+ element('markovModel').value='spatial';
+ await element('markovModel').onchange();
+ assert.equal(element('markovGrid').hidden,true);
  assert.equal(element('markovSpatial').hidden,false);
  assert.equal(element('markovCoarse').hidden,true);
  assert.ok(element('markovEntity').options.some(option=>option.value==='ball'));

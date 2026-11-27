@@ -12,10 +12,12 @@ import {vertices,area,inside} from './geometry.js';
 import {createMarkovView} from './markov-view.js';
 import {createSpatialMarkovView} from './spatial-markov-view.js';
 import {createGridMarkovView} from './grid-markov-view.js';
+import {createJointMarkovView} from './joint-markov-view.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
 const markovView=createMarkovView(url=>get(url),$);
 const spatialMarkovView=createSpatialMarkovView(url=>get(url),$);
 const gridMarkovView=createGridMarkovView(url=>get(url),$);
+const jointMarkovView=createJointMarkovView(url=>get(url),$);
 let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=null,transform,request=0;
 let chances=[],loadedChance=null,passingData=null,currentView='tiling';
 const passPlayback=new PassPlayback();let passSnapshot=null;
@@ -435,13 +437,16 @@ function draw(){
  if (hideOptimizer) $('optimizerCharts').hidden = true;
  $('optimizerControls').hidden=hideOptimizer||(playing&&!clipOptimizer?.worker);
  const isMarkov=currentView==='markov';
- const isSpatial=isMarkov&&$('markovModel').value==='spatial';
- const isGrid=isMarkov&&!isSpatial&&$('markovModel').value!=='coarse';
+ const stateModel=$('markovModel').value;
+ const isSpatial=isMarkov&&stateModel==='spatial';
+ const isGrid=isMarkov&&stateModel==='grid';
+ const isJoint=isMarkov&&!isSpatial&&!isGrid&&stateModel!=='coarse';
  if(isSpatial){
   const seconds=Number($('markovHorizon').value);
   $('markovSeconds').textContent=`${seconds} s`;
   spatialMarkovView.render(frames,index,meta,seconds,$('markovMode').value==='backward');
  }else if(isGrid)gridMarkovView.render(frames,index,meta,$('markovMode').value==='backward');
+ else if(isJoint)jointMarkovView.render(frames,index,meta,$('markovMode').value==='backward');
  else if(isMarkov)markovView.render(frames[index],meta);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
@@ -510,7 +515,9 @@ function draw(){
  }else if(isMarkov){
   if(isSpatial)spatialMarkovView.paint(ctx,px,scale,L,W,teamColour);
   if(isGrid)gridMarkovView.paint(ctx,px,scale,L,W);
-  $('teamLegend').textContent=isGrid?'Tracked frame · brighter cells have higher probability one second ahead'
+  if(isJoint)jointMarkovView.paint(ctx,px,scale,L,W,teamColour);
+  $('teamLegend').textContent=isJoint?'Circles show the tracked frame · squares show a sampled frame one second ahead'
+   :isGrid?'Tracked frame · brighter cells have higher probability one second ahead'
    :isSpatial?'Solid markers show the tracked frame · dotted paths lead to forecast means'
    :'Tracked players and ball at the selected frame';
   $('fillLegend').textContent='';
@@ -675,7 +682,9 @@ $('viewMarkov').onclick=()=>{
 function selectMarkovModel(){
  const coarse=$('markovModel').value==='coarse';
  const spatial=$('markovModel').value==='spatial';
- $('markovGrid').hidden=coarse||spatial;
+ const grid=$('markovModel').value==='grid';
+ $('markovJoint').hidden=coarse||spatial||grid;
+ $('markovGrid').hidden=!grid;
  $('markovSpatial').hidden=!spatial;
  $('markovCoarse').hidden=!coarse;
  $('markovHorizonField').hidden=!coarse&&!spatial;
@@ -683,10 +692,10 @@ function selectMarkovModel(){
  horizon.max=coarse?'60':'20';
  if(Number(horizon.value)>Number(horizon.max))horizon.value=horizon.max;
  draw();
- return (coarse?markovView:spatial?spatialMarkovView:gridMarkovView).load(draw);
+ return (coarse?markovView:spatial?spatialMarkovView:grid?gridMarkovView:jointMarkovView).load(draw);
 }
 $('markovModel').onchange=selectMarkovModel;
-for(const id of ['markovMode','markovHorizon','markovTarget','markovEntity','markovSpatialTarget','markovGridEntity','markovGridTarget']){
+for(const id of ['markovMode','markovHorizon','markovTarget','markovEntity','markovSpatialTarget','markovGridEntity','markovGridTarget','markovJointEntity','markovJointScenario','markovJointTarget']){
  $(id).oninput=draw;
 }
 for(const id of ['integrityColour','legacyDanger','integrityTiles','integrityConnections','integrityMarking','integrityFacing'])$(id).onchange=()=>{$('legacySetting').hidden=$('integrityColour').value!=='danger';draw();};

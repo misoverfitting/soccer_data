@@ -13,11 +13,37 @@
 <section id="markovPanel" hidden aria-labelledby="markovTitle">
  <h2 id="markovTitle">Kolmogorov equations</h2>
  <div class="markov-controls">
-  <label>State model<select id="markovModel"><option value="grid">1 m grid · one-second transition</option><option value="spatial">Continuous player and ball positions</option><option value="coarse">Possession thirds</option></select></label>
+  <label>State model<select id="markovModel"><option value="joint">Joint 1 m grid · whole frame</option><option value="grid">Independent 1 m grid</option><option value="spatial">Continuous player and ball positions</option><option value="coarse">Possession thirds</option></select></label>
   <label>Equation<select id="markovMode"><option value="forward">Forward distribution</option><option value="backward">Backward target probability</option></select></label>
   <label id="markovHorizonField" hidden>Time ahead <output id="markovSeconds" for="markovHorizon">5 s</output><input id="markovHorizon" type="range" min="0" max="20" step="1" value="5"></label>
  </div>
- <div id="markovGrid">
+ <div id="markovJoint">
+  <label>Focus<select id="markovJointEntity"></select></label>
+  <label>Sampled next frame <output id="markovJointScenarioNumber" for="markovJointScenario">1</output><input id="markovJointScenario" type="range" min="1" max="128" value="1"></label>
+  <label id="markovJointTargetField" hidden>Target area<select id="markovJointTarget">
+   <option value="0">Upper left</option><option value="1">Upper middle</option><option value="2">Upper right</option>
+   <option value="3">Center left</option><option value="4" selected>Center of pitch</option><option value="5">Center right</option>
+   <option value="6">Lower left</option><option value="7">Lower middle</option><option value="8">Lower right</option>
+  </select></label>
+  <p id="markovJointStatus" role="status"></p>
+  <p id="markovJointReadout"></p>
+  <p class="note">Squares show one possible whole frame a second ahead. The heatmap shows the focused entity’s cell probabilities across all possible frames.</p>
+  <details>
+   <summary>Whole-frame transition and training</summary>
+   <p>Each input includes the ball and the 20 outfield players, with their 1 m cells, signed one-second velocities, and distances to the ball. Players are ordered by depth within each team from its own goal, and keep their identity across the transition.</p>
+   <p>One regularized regression maps the entire snapshot to 42 mean displacement coordinates. A single correlated Gaussian draw gives a displacement vector for the whole frame. Rounding yields integer cell movements, which determine both the next positions and velocities. The backward tool sums the selected entity’s marginal cell probabilities in the target area.</p>
+   <p>Leave-one-match-out validation on nine games selected the regression penalty and covariance shrinkage. Training required the same 20 outfield players and ball at the previous, current, and next snapshots. Substitutions, red cards, and missing tracks can leave a frame outside the model.</p>
+   <p>The fitted covariance captures co-movement around the predicted positions. The model uses a single Gaussian per snapshot and can place players off the pitch. It has no explicit rule for passes, collisions, or possession.</p>
+  </details>
+  <details>
+   <summary>Held-out validation</summary>
+   <p id="markovJointFit"></p>
+   <p id="markovJointHoldout"></p>
+   <p id="markovJointRmse"></p>
+   <p id="markovJointScore"></p>
+  </details>
+ </div>
+ <div id="markovGrid" hidden>
   <label>Focus<select id="markovGridEntity"></select></label>
   <label id="markovGridTargetField" hidden>Target area<select id="markovGridTarget">
    <option value="0">Upper left</option><option value="1">Upper middle</option><option value="2">Upper right</option>

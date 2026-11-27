@@ -84,12 +84,19 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
   };
   const searchPoints = objective === 'epv' ? [] : gridPoints(pitchLength, pitchWidth, searchGridStep);
   const finalPoints = objective === 'epv' ? [] : gridPoints(pitchLength, pitchWidth, 1);
+  const prepared = objective === 'integrity' && reachable.every(Boolean) ? new Map() : null;
   let evaluations = 0;
   function score(layout, points) {
     evaluations++;
+    if (prepared?.has(points)) return prepared.get(points)(layout);
     const defenderData = layout.map(({ x, y }, i) => ({ x, y, player_id: attackers.length + i }));
     const model = buildIntegrity({ ...frame, player_data: [...frame.player_data, ...defenderData] }, null, null, meta, data);
     if (model.reason) throw new Error(model.reason);
+    if (prepared) {
+      const scorer = model.prepareStationaryIntegrity(points);
+      prepared.set(points, scorer);
+      return scorer(layout);
+    }
     if (objective === 'epv') return model.ballValue;
     if (objective === 'danger') {
       let peak = -Infinity;

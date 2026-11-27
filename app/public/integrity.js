@@ -40,17 +40,67 @@ export function buildIntegrity(frame,before,after,meta,data){
   return location(q)*Math.exp(vm.intercept+Object.values(vm.coef).reduce((sum,b,i)=>sum+b*f[i],0));
  }
  const ballValue=context(ball),eff=(t,tb)=>Math.max(t,tb)+s.TIE_BREAK*t;
+ const controlAt=(ta,td,tb)=>sigmoid(k*(eff(td,tb)-eff(ta,tb)));
+ const successAt=(control,interception,ta,td,d)=>{
+  const ground=(1-interception)*control,tl=d/s.V_LOFT+s.T_HANG;
+  const loft=d>15?s.LOFT_CONTROL*controlAt(ta,td,tl):0;
+  return Math.max(ground,loft);
+ };
  function evaluate(q,receiver=null,receiverTime=null){
   const times=new Map(players.map(p=>[p.player_id,arrival(p,q)]));
   if(receiver&&receiverTime!=null){const raw=times.get(receiver.player_id);times.set(receiver.player_id,Math.min(raw,receiverTime+(1-s.RUN_CREDIT)*Math.max(0,raw-receiverTime)));}
   const ta=Math.min(...attackers.map(p=>times.get(p.player_id))),td=Math.min(...defenders.map(p=>times.get(p.player_id))),d=distance(ball,q),tb=d/s.V_BALL;
-  const control=sigmoid(k*(eff(td,tb)-eff(ta,tb)));
+  const control=controlAt(ta,td,tb);
   let interception=0;
   for(let j=0;j<8;j++){const f=.15+j*.75/7;if(d*f<=2)continue;const pt={x:ball.x+(q.x-ball.x)*f,y:ball.y+(q.y-ball.y)*f};interception=Math.max(interception,sigmoid(k*(d*f/s.V_BALL-Math.min(...defenders.map(p=>arrival(p,pt))))));}
-  const ground=(1-interception)*control,tl=d/s.V_LOFT+s.T_HANG;
-  const loft=d>15?s.LOFT_CONTROL*sigmoid(k*(eff(td,tl)-eff(ta,tl))):0;
-  const success=Math.max(ground,loft),value=context(q,times),opponentValue=location({x:-q.x,y:-q.y});
+  const success=successAt(control,interception,ta,td,d),value=context(q,times),opponentValue=location({x:-q.x,y:-q.y});
   return {control,success,value,td,interception,gain:success*value-(1-success)*opponentValue-ballValue,receiverSuccess:receiver?base.at(receiver,q):null};
+ }
+ // Candidate endpoints recur across the one-second search. For stationary
+ // optimizer snapshots, cache each defender's arrival probabilities by endpoint.
+ function prepareStationaryIntegrity(points){
+  const cells=points.filter(q=>q.x*flip>=ball.x*flip-5).map(q=>{
+   const d=distance(ball,q),weight=location(q),tb=d/s.V_BALL;
+   const ta=Math.min(...attackers.map(p=>arrival(p,q)));
+   const checkpoints=[];
+   for(let j=0;j<8;j++){
+    const f=.15+j*.75/7;
+    if(d*f>2)checkpoints.push({x:ball.x+(q.x-ball.x)*f,y:ball.y+(q.y-ball.y)*f,time:d*f/s.V_BALL});
+   }
+   return {q,d,weight,tb,ta,checkpoints};
+  });
+  const total=cells.reduce((sum,cell)=>sum+cell.weight,0);
+  if(!(total>0))throw new Error('No positive location value on the integrity grid');
+  const caches=defenders.map(()=>new WeakMap());
+  return layout=>{
+   const entries=layout.map((point,i)=>{
+    const cache=caches[i],cached=cache.get(point);
+    if(cached)return cached;
+    const player={...defenders[i],...point,fx:ball.x-point.x,fy:ball.y-point.y};
+    const times=new Float64Array(cells.length),risks=new Float64Array(cells.length);
+    for(let j=0;j<cells.length;j++){
+     const {q,checkpoints}=cells[j];
+     times[j]=arrival(player,q);
+     for(const checkpoint of checkpoints){
+      risks[j]=Math.max(risks[j],sigmoid(k*(checkpoint.time-arrival(player,checkpoint))));
+     }
+    }
+    const entry={times,risks};
+    cache.set(point,entry);
+    return entry;
+   });
+   let denied=0;
+   for(let i=0;i<cells.length;i++){
+    const {ta,tb,d,weight}=cells[i];
+    let td=Infinity,interception=0;
+    for(const {times,risks} of entries){
+     td=Math.min(td,times[i]);
+     interception=Math.max(interception,risks[i]);
+    }
+    denied+=weight*(1-successAt(controlAt(ta,td,tb),interception,ta,td,d));
+   }
+   return denied/total;
+  };
  }
  function projectedOption(p,opt=null){
   const run=opt?.run?data.runs.find(r=>r.id===opt.run&&r.end>frame.frame):null;
@@ -105,7 +155,7 @@ export function buildIntegrity(frame,before,after,meta,data){
   const orientation=d.length?d.reduce((sum,p)=>sum+(1+((ball.x-p.x)*p.fx+(ball.y-p.y)*p.fy)/(distance(ball,p)*Math.hypot(p.fx,p.fy)+1e-9))/2,0)/d.length:null;
   return {tiles,links,marks,marking,nearestMarking,individual,orientation,free:free?roster.get(free.attacker.player_id)?.short_name:null,oldIntegrity:aSum?core.reduce((s,t)=>s+t.strength*t.area,0)/aSum:null,...g};
  }
- return {...base,flip,ballValue,location,context,evaluate,projectedOption,recommendations,grid,diagnostics};
+ return {...base,flip,ballValue,location,context,evaluate,prepareStationaryIntegrity,projectedOption,recommendations,grid,diagnostics};
 }
 
 export function integrityColour(value,kind='control'){

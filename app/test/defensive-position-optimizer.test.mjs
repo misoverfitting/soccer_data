@@ -31,6 +31,18 @@ function viewerScore(layout, metric) {
   return metric === 'Integrity' ? grid.integrity : grid.threat;
 }
 
+test('reachable Integrity candidates use the same score as the viewer grid', () => {
+  const gk = { x: -24, y: 0 };
+  const reachable = [{ x: -15, y: -5 }, { x: -16, y: -3 }, { x: -17, y: -4 }];
+  const { maximum } = optimizeDefense({
+    pitchLength: 50, pitchWidth: 30, attackDirection: 'left',
+    attackers, ball: attackers[0], metric: 'integrity', searchGridStep: 1, restarts: 1,
+    defenders: [{ id: 'GK', reachable: [gk] }, { id: 'CB', reachable }],
+  }, fitted, { direction: 'maximum' });
+  assert.equal(maximum.value, viewerScore(maximum.defenders, 'Integrity'));
+  assert.equal(maximum.value, Math.max(...reachable.map(point => viewerScore([gk, point], 'Integrity'))));
+});
+
 for (const metric of ['Integrity', 'Danger', 'EPV']) {
   test(metric + ' returns feasible extrema scored with the viewer model', () => {
     const scene = {

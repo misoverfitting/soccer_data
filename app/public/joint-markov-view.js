@@ -7,6 +7,7 @@ const percent = value => new Intl.NumberFormat('en', { style: 'percent', maximum
 export function createJointMarkovView(get, element) {
   let fit, pending, previousMeta, previousFrame, previousEarlier, roster, snapshot, mean;
   let selectedId, heatmap, nextFrame, target;
+  let stopFrames, stopMeta, stops;
   const entity = element('markovJointEntity');
   const status = element('markovJointStatus');
   const readout = element('markovJointReadout');
@@ -34,7 +35,6 @@ export function createJointMarkovView(get, element) {
   }
 
   function render(frames, index, meta, backward) {
-    if (!fit) return;
     const frame = frames[index], earlier = frames[index - 10];
     if (meta !== previousMeta || frame !== previousFrame || earlier !== previousEarlier) {
       if (meta !== previousMeta) roster = new Map((meta?.players ?? []).map(player => [player.id, player]));
@@ -43,25 +43,29 @@ export function createJointMarkovView(get, element) {
       previousEarlier = earlier;
       snapshot = frame && earlier?.period === frame.period && earlier.frame === frame.frame - 10
         ? jointSnapshot(spatialEntities(frame, roster), spatialEntities(earlier, roster), meta, frame.period) : null;
-      mean = snapshot ? latentMean(fit, snapshot) : null;
+      mean = null;
       heatmap = null;
       const selected = entity.value;
-      const ids = snapshot?.points.map(point => point.id) ?? [];
+      const tracked = spatialEntities(frame, roster).sort((a, b) =>
+        Number(b.kind === 'ball') - Number(a.kind === 'ball') || a.name.localeCompare(b.name));
+      const ids = tracked.map(point => point.id);
       const options = Array.from(entity.options);
       if (ids.join() !== options.map(option => option.value).join()) {
-        entity.replaceChildren(...(snapshot?.points ?? []).map(point => new Option(point.name, point.id)));
+        entity.replaceChildren(...tracked.map(point => new Option(point.name, point.id)));
         if (ids.includes(selected)) entity.value = selected;
       }
+      entity.disabled = !tracked.length;
     }
     element('markovJointTargetField').hidden = !backward;
-    scenario.disabled = !snapshot;
-    entity.disabled = !snapshot;
+    scenario.disabled = !fit || !snapshot;
+    if (!fit) return;
     if (!snapshot) {
-      status.textContent = 'Choose a frame with the ball and all 20 outfield players tracked now and one second earlier.';
+      status.textContent = 'Focus is available now. Forecasts start once a full tracked frame has one second of history.';
       readout.textContent = '';
       element('markovJointLegend').hidden = true;
       return;
     }
+    mean ??= latentMean(fit, snapshot);
     const focusIndex = Math.max(0, snapshot.points.findIndex(point => point.id === entity.value));
     const focus = snapshot.points[focusIndex];
     const { pitch_length: length, pitch_width: width } = meta;
@@ -82,11 +86,6 @@ export function createJointMarkovView(get, element) {
         }
       }
       heatmap = { cells, peak, onPitch };
-      element('markovJointLegend').hidden = !peak?.p;
-      if (peak?.p) {
-        element('markovJointLegendMid').textContent = percent(peak.p / 2);
-        element('markovJointLegendMax').textContent = percent(peak.p);
-      }
     }
     const seed = (frame.frame * 2654435761 + Number(scenario.value) * 1597334677) >>> 0;
     nextFrame = sampleJointFrame(fit, snapshot, mean, seed);
@@ -101,8 +100,36 @@ export function createJointMarkovView(get, element) {
     readout.textContent += ` Off-pitch probability ${percent(Math.min(1, Math.max(0, 1 - heatmap.onPitch)))}.`;
   }
 
-  function paint(ctx, px, scale, length, width, teamColour) {
-    if (!snapshot || !heatmap) return;
+  function playbackStops(frames, meta) {
+    if (!fit) return [];
+    if (frames === stopFrames && meta === stopMeta) return stops;
+    stopFrames = frames;
+    stopMeta = meta;
+    const players = new Map(meta.players.map(player => [player.id, player]));
+    const first = frames[0].frame;
+    stops = frames.flatMap((frame, index) => {
+      const before = frames[index - 10], after = frames[index + 10];
+      if ((frame.frame - first) % 10 !== 0 || before?.period !== frame.period || after?.period !== frame.period
+        || before.frame !== frame.frame - 10 || after.frame !== frame.frame + 10) return [];
+      return jointSnapshot(spatialEntities(frame, players), spatialEntities(before, players), meta, frame.period)
+        ? [{ index }] : [];
+    });
+    return stops;
+  }
+
+  function projection() {
+    return snapshot && heatmap && nextFrame ? { snapshot, heatmap, nextFrame, target, selectedId } : null;
+  }
+
+  function paint(ctx, px, scale, length, width, teamColour, layer, opacity = 1) {
+    const peak = layer?.heatmap.peak?.p;
+    element('markovJointLegend').hidden = !peak || !opacity;
+    if (peak && opacity) {
+      element('markovJointLegendMid').textContent = percent(peak / 2);
+      element('markovJointLegendMax').textContent = percent(peak);
+    }
+    if (!layer || !opacity) return;
+    const { snapshot, heatmap, nextFrame, target, selectedId } = layer;
     ctx.save();
     ctx.beginPath();
     ctx.rect(...px(-length / 2, width / 2), length * scale, width * scale);
@@ -111,10 +138,10 @@ export function createJointMarkovView(get, element) {
       if (p < heatmap.peak.p / 300 || !p) continue;
       const relative = p / heatmap.peak.p;
       ctx.fillStyle = `hsl(${120 * relative} 85% 53%)`;
-      ctx.globalAlpha = 0.30 + 0.55 * Math.sqrt(relative);
+      ctx.globalAlpha = opacity * (0.30 + 0.55 * Math.sqrt(relative));
       ctx.fillRect(...px(x, y + 1), scale, scale);
     }
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = opacity;
     if (target) {
       ctx.strokeStyle = '#90ead0';
       ctx.strokeRect(...px(target.xMin, target.yMax), (target.xMax - target.xMin) * scale, (target.yMax - target.yMin) * scale);
@@ -134,5 +161,5 @@ export function createJointMarkovView(get, element) {
     ctx.restore();
   }
 
-  return { load, render, paint };
+  return { load, render, paint, projection, playbackStops };
 }

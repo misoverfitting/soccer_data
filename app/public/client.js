@@ -195,7 +195,7 @@ window.visualViewport?.addEventListener('resize',()=>requestAnimationFrame(draw)
 requestAnimationFrame(fitPlaybackViewport);
 async function get(url){const r=await fetch(url);const data=await r.json();if(!r.ok)throw Error(data.error||'Request failed');return data;}
 function configure(m){meta=m;$('title').textContent=`${m.home_team.name} vs ${m.away_team.name}`;$('dimensions').textContent=`${m.pitch_length} × ${m.pitch_width} m`;$('team').replaceChildren(new Option('Both teams','all'),new Option(m.home_team.name,String(m.home_team.id)),new Option(m.away_team.name,String(m.away_team.id)));}
-function install(data){clearClipOptimizer();resetPassAdvice();$('startupLoading').hidden=true;$('play').disabled=false;$('scrub').disabled=false;loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
+function install(data){clearClipOptimizer();resetJointPlayback();resetPassAdvice();$('startupLoading').hidden=true;$('play').disabled=false;$('scrub').disabled=false;loadedChance=null;frames=data;index=0;playing=false;$('play').textContent='▶ Play';$('scrub').max=frames.length-1;selected=null;draw();}
 async function demo(){const token=++request;clearClipOptimizer();draw();try{const d=await get('/demo.json');if(token!==request)return;configure(d.metadata);passingData=await get(`/api/matches/${d.metadata.id}/passing`).catch(()=>null);if(token!==request)return;install(d.frames);say('Demo ready. Select a match and phase to explore another clip.');}catch(e){say(e.message);}}
 function teamColour(team){return teamScaleColour(team,meta,frames[index]?.period);}
 function drawSoccerBall(x,y,tint,detected){
@@ -215,6 +215,15 @@ function drawSoccerBall(x,y,tint,detected){
 let optimizerState = null;
 let clipOptimizer = null;
 let plausibleHold = null, plausibleTime = 0;
+const jointHoldDuration = 3000;
+let jointHold = null, jointTime = 0, previousJointProjection = null;
+function resetJointPlayback(){
+ jointHold=null;
+ previousJointProjection=null;
+}
+function jointViewActive(){
+ return currentView==='markov'&&['joint',''].includes($('markovModel').value);
+}
 const optimizerLabels = { integrity:'Integrity', danger:'Danger', epv:'EPV' };
 
 function clearClipOptimizer() {
@@ -440,13 +449,15 @@ function draw(){
  const stateModel=$('markovModel').value;
  const isSpatial=isMarkov&&stateModel==='spatial';
  const isGrid=isMarkov&&stateModel==='grid';
- const isJoint=isMarkov&&!isSpatial&&!isGrid&&stateModel!=='coarse';
+ const isJoint=jointViewActive();
+ const jointElapsed=jointHold?jointTime-jointHold.started:Infinity;
+ const jointReplay=playing||jointElapsed<jointHoldDuration;
  if(isSpatial){
   const seconds=Number($('markovHorizon').value);
   $('markovSeconds').textContent=`${seconds} s`;
   spatialMarkovView.render(frames,index,meta,seconds,$('markovMode').value==='backward');
  }else if(isGrid)gridMarkovView.render(frames,index,meta,$('markovMode').value==='backward');
- else if(isJoint)jointMarkovView.render(frames,index,meta,$('markovMode').value==='backward');
+ else if(isJoint)jointMarkovView.render(frames,jointReplay&&jointHold?jointHold.index:index,meta,$('markovMode').value==='backward');
  else if(isMarkov)markovView.render(frames[index],meta);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
@@ -515,7 +526,12 @@ function draw(){
  }else if(isMarkov){
   if(isSpatial)spatialMarkovView.paint(ctx,px,scale,L,W,teamColour);
   if(isGrid)gridMarkovView.paint(ctx,px,scale,L,W);
-  if(isJoint)jointMarkovView.paint(ctx,px,scale,L,W,teamColour);
+  if(isJoint){
+   const fading=jointElapsed<1000;
+   const projection=fading?previousJointProjection:
+    !jointReplay||jointHold?jointMarkovView.projection():null;
+   jointMarkovView.paint(ctx,px,scale,L,W,teamColour,projection,fading?1-jointElapsed/1000:1);
+  }
   $('teamLegend').textContent=isJoint?'Circles show the tracked frame · squares show a sampled frame one second ahead'
    :isGrid?'Tracked frame · brighter cells have higher probability one second ahead'
    :isSpatial?'Solid markers show the tracked frame · dotted paths lead to forecast means'
@@ -579,7 +595,7 @@ function fillChances(){
  $('chanceInfo').textContent=`${shown.length} clips · 20 s build-up + 8 s aftermath, bounded to the half. High = recorded attacking EPV ≥ 0.10 or a confirmed goal; this is not shot xG. Selecting loads the clip.`;
 }
 async function choose(){
- const token=++request;clearClipOptimizer();playing=false;$('play').textContent='▶ Play';draw();$('chance').disabled=true;$('load').disabled=true;pendingMeta=null;
+ const token=++request;clearClipOptimizer();resetJointPlayback();playing=false;$('play').textContent='▶ Play';draw();$('chance').disabled=true;$('load').disabled=true;pendingMeta=null;
  say('Reading match metadata, phases and pre-identified chances…');
  try{const id=$('match').value;const [m,p,c]=await Promise.all([get(`/api/matches/${id}/metadata`),get(`/api/matches/${id}/phases`),get(`/api/matches/${id}/chances`)]);
  if(token!==request)return;phases=p;chances=c.chances;fillChances();$('phase').replaceChildren(new Option('Opening clip',''));
@@ -592,7 +608,7 @@ $('chanceFilter').onchange=fillChances;
 $('phase').onchange=()=>{$('chance').value='';const p=phases[$('phase').value];$('start').value=p?.frame_start??10;};
 $('start').oninput=()=>$('chance').value='';$('duration').onchange=()=>$('chance').value='';
 async function loadClip(chance=null,initial=false){
- const token=++request,id=$('match').value;clearClipOptimizer();playing=false;$('play').textContent='▶ Play';draw();$('load').disabled=true;
+ const token=++request,id=$('match').value;clearClipOptimizer();resetJointPlayback();playing=false;$('play').textContent='▶ Play';draw();$('load').disabled=true;
  say('Streaming real tracking data… later clips may take up to 90 seconds.');
  try{const m=(pendingMeta?.id===Number(id)?pendingMeta:null)??await get(`/api/matches/${id}/metadata`);
  const query=chance?`start=${chance.startFrame}&count=${chance.count}&end=${chance.endFrame}&period=${chance.period}`:`start=${encodeURIComponent($('start').value)}&count=${Number($('duration').value)*10}`;
@@ -605,14 +621,33 @@ async function loadClip(chance=null,initial=false){
 }
 $('load').onclick=()=>loadClip(chances.find(c=>c.id===$('chance').value)??null);
 $('chance').onchange=()=>{const c=chances.find(c=>c.id===$('chance').value);if(c){$('start').value=c.startFrame;$('phase').value='';return loadClip(c);}};
-$('jumpShot').onclick=()=>{if(!loadedChance)return;plausibleHold=null;resetPassAdvice();index=frames.reduce((best,f,i)=>Math.abs(f.frame-loadedChance.anchorFrame)<Math.abs(frames[best].frame-loadedChance.anchorFrame)?i:best,0);playing=false;$('play').textContent='▶ Play';draw();};
+$('jumpShot').onclick=()=>{if(!loadedChance)return;plausibleHold=null;resetJointPlayback();resetPassAdvice();index=frames.reduce((best,f,i)=>Math.abs(f.frame-loadedChance.anchorFrame)<Math.abs(frames[best].frame-loadedChance.anchorFrame)?i:best,0);playing=false;$('play').textContent='▶ Play';draw();};
 $('match').onchange=choose;$('demo').onclick=demo;
-$('play').onclick=()=>{selected=null;if(index>=frames.length-1){index=0;plausibleHold=null;resetPassAdvice();}playing=!playing;last=performance.now();if(playing&&plausibleHold)plausibleHold.started+=last-plausibleTime;$('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();};
-$('scrub').oninput=()=>{plausibleHold=null;index=Number($('scrub').value);passPlayback.seek(frames[index].frame,frames[index].period,passingData?.passes??[]);passSnapshot=null;playing=false;$('play').textContent='▶ Play';draw();};
+$('play').onclick=()=>{
+ selected=null;
+ if(index>=frames.length-1){index=0;plausibleHold=null;resetJointPlayback();resetPassAdvice();}
+ playing=!playing;last=performance.now();
+ if(playing&&plausibleHold)plausibleHold.started+=last-plausibleTime;
+ if(playing&&jointHold){jointHold.started+=last-jointTime;jointTime=last;}
+ $('play').textContent=playing?'Ⅱ Pause':'▶ Play';draw();
+};
+$('scrub').oninput=()=>{plausibleHold=null;resetJointPlayback();index=Number($('scrub').value);passPlayback.seek(frames[index].frame,frames[index].period,passingData?.passes??[]);passSnapshot=null;playing=false;$('play').textContent='▶ Play';draw();};
 for(const id of ['mode','team','colour','ball','ballOnly','detected','showEstimates','showReceiving'])$(id).onchange=()=>{selected=null;$('inspect').textContent=$('mode').value==='voronoi'?'Cells show proximity to each selected site; ball cells are neutral.':'Pause and click a triangle to inspect it.';draw();};
 function tick(now){
  if(playing&&frames.length){
-  if(currentView==='optimizer'&&clipOptimizer?.stops){
+  if(jointViewActive()){
+   const dt=100/Number($('speed').value);
+   const resume=jointHold?Math.max(last,jointHold.started+jointHoldDuration):last;
+   const advance=Math.max(0,Math.floor((now-resume)/dt));
+   const proposed=Math.min(frames.length-1,index+advance);
+   const next=plausiblePlaybackStep(jointMarkovView.playbackStops(frames,meta),jointHold,index,proposed,now,jointHoldDuration);
+   if(next.waiting||next.index!==index){
+    if(next.hold!==jointHold)previousJointProjection=jointHold?jointMarkovView.projection():null;
+    jointHold=next.hold;jointTime=now;index=next.index;last=now;
+    if(index===frames.length-1&&!next.waiting){playing=false;resetJointPlayback();$('play').textContent='▶ Replay';}
+    draw();
+   }
+  }else if(currentView==='optimizer'&&clipOptimizer?.stops){
    const dt=100/Number($('speed').value);
    const proposed=Math.min(frames.length-1,index+Math.floor((now-last)/dt));
    const next=plausiblePlaybackStep(clipOptimizer.stops,plausibleHold,index,proposed,now);
@@ -641,6 +676,7 @@ function setViewMode(value){
  if(currentView===value)return;
  closeSettingHelp();
  plausibleHold=null;
+ resetJointPlayback();
  clearOptimizer();
  resetPassAdvice();
  if(currentView==='tiling')tilingHalos=$('showReceiving').checked;
@@ -680,6 +716,7 @@ $('viewMarkov').onclick=()=>{
  return selectMarkovModel();
 };
 function selectMarkovModel(){
+ resetJointPlayback();
  const coarse=$('markovModel').value==='coarse';
  const spatial=$('markovModel').value==='spatial';
  const grid=$('markovModel').value==='grid';

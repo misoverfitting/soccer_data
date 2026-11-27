@@ -87,8 +87,8 @@ export function plausibleSamples(frames, meta, physical) {
   });
 }
 
-export function plausiblePlaybackStep(stops, hold, index, proposed, now) {
-  if (hold && now - hold.started < 2000) return { hold, index, waiting: true };
+export function plausiblePlaybackStep(stops, hold, index, proposed, now, holdDuration = 2000) {
+  if (hold && now - hold.started < holdDuration) return { hold, index, waiting: true };
   const stop = stops.find(stop => stop.index >= index && stop.index <= proposed && stop.index !== hold?.index);
   if (!stop) return { hold, index: proposed, waiting: false };
   return {

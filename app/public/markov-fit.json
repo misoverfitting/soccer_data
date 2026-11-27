@@ -1,0 +1,425 @@
+{
+  "sourceCommit": "4340d274572876239c154c90bc507a9b3250a656",
+  "training": [
+    {
+      "id": 1874553,
+      "date": "2024-11-23T06:00:00Z",
+      "fixture": "Brisbane Roar FC vs Adelaide United Football Club",
+      "frames": 59713
+    },
+    {
+      "id": 1886347,
+      "date": "2024-11-30T04:00:00Z",
+      "fixture": "Auckland FC vs Newcastle United Jets FC",
+      "frames": 58464
+    },
+    {
+      "id": 1899585,
+      "date": "2024-12-07T04:00:00Z",
+      "fixture": "Auckland FC vs Wellington Phoenix FC",
+      "frames": 59783
+    },
+    {
+      "id": 1925299,
+      "date": "2024-12-21T06:00:00Z",
+      "fixture": "Brisbane Roar FC vs Perth Glory Football Club",
+      "frames": 60759
+    },
+    {
+      "id": 1927964,
+      "date": "2024-12-22T06:00:00Z",
+      "fixture": "Western Sydney Wanderers FC vs Wellington Phoenix FC",
+      "frames": 58396
+    },
+    {
+      "id": 1953632,
+      "date": "2024-12-31T08:00:00Z",
+      "fixture": "Central Coast Mariners Football Club vs Melbourne City FC",
+      "frames": 58346
+    },
+    {
+      "id": 1959846,
+      "date": "2025-01-10T08:35:00Z",
+      "fixture": "Melbourne Victory Football Club vs Western United",
+      "frames": 57941
+    },
+    {
+      "id": 1986691,
+      "date": "2025-01-26T06:00:00Z",
+      "fixture": "Western Sydney Wanderers FC vs Auckland FC",
+      "frames": 57498
+    },
+    {
+      "id": 1996436,
+      "date": "2025-02-01T04:00:00Z",
+      "fixture": "Auckland FC vs Macarthur FC",
+      "frames": 60118
+    }
+  ],
+  "holdout": {
+    "id": 1996435,
+    "date": "2025-02-01T06:00:00Z",
+    "fixture": "Sydney Football Club vs Adelaide United Football Club",
+    "frames": 56967
+  },
+  "states": [
+    "Home · defensive third",
+    "Home · middle third",
+    "Home · attacking third",
+    "Away · defensive third",
+    "Away · middle third",
+    "Away · attacking third",
+    "No recorded possession"
+  ],
+  "rates": [
+    [
+      -0.1811753230919288,
+      0.11241160692514021,
+      0,
+      0,
+      0.00487685930260912,
+      0.03023652767617654,
+      0.033650329188002925
+    ],
+    [
+      0.04177675033025099,
+      -0.1928665785997358,
+      0.065554821664465,
+      0.006274768824306473,
+      0.05383091149273448,
+      0.001486129458388375,
+      0.02394319682959049
+    ],
+    [
+      0,
+      0.04307768924302789,
+      -0.18102589641434264,
+      0.07993027888446215,
+      0.005727091633466136,
+      0,
+      0.052290836653386456
+    ],
+    [
+      0,
+      0.005839045443005839,
+      0.03858847423203859,
+      -0.18684945417618687,
+      0.11525767961411526,
+      0,
+      0.027164254887027166
+    ],
+    [
+      0.005790387955993051,
+      0.04675738274464389,
+      0.0017371163867979154,
+      0.03792704111175449,
+      -0.1702374059061957,
+      0.06079907353792704,
+      0.017226404169079328
+    ],
+    [
+      0.09297807382736609,
+      0.004718290313627533,
+      0,
+      0,
+      0.051623646960865945,
+      -0.20177629752983622,
+      0.05245628642797669
+    ],
+    [
+      0.003656382235733947,
+      0.005299700094490777,
+      0.005258617148021856,
+      0.003943962861016392,
+      0.004888870629801569,
+      0.006080276077400271,
+      -0.02912780904646481
+    ]
+  ],
+  "frequency": [
+    0.07742995242051205,
+    0.11434181708330186,
+    0.07582508873952118,
+    0.07437127105203535,
+    0.13042821539158675,
+    0.06802733932482441,
+    0.4595763159882184
+  ],
+  "selected": {
+    "cadence": 10,
+    "priorSeconds": 0,
+    "rateScale": 1,
+    "logLoss": 1.0872838185495317
+  },
+  "tuning": [
+    {
+      "cadence": 10,
+      "priorSeconds": 0,
+      "rateScale": 1,
+      "logLoss": 1.0872838185495317
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 20,
+      "rateScale": 1,
+      "logLoss": 1.0872879267551454
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 100,
+      "rateScale": 1,
+      "logLoss": 1.0873284709497844
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 20,
+      "rateScale": 1,
+      "logLoss": 1.088230704356885
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 100,
+      "rateScale": 1,
+      "logLoss": 1.0882316620250754
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 0,
+      "rateScale": 1,
+      "logLoss": 1.0882370956061416
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 20,
+      "rateScale": 1,
+      "logLoss": 1.0887608077436086
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 0,
+      "rateScale": 1,
+      "logLoss": 1.0887628050633207
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 100,
+      "rateScale": 1,
+      "logLoss": 1.0887787323996319
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 100,
+      "rateScale": 0.7,
+      "logLoss": 1.0944359829663475
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 20,
+      "rateScale": 0.7,
+      "logLoss": 1.0945526499915583
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 0,
+      "rateScale": 0.7,
+      "logLoss": 1.0945897878713746
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 100,
+      "rateScale": 0.7,
+      "logLoss": 1.096205750510923
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 20,
+      "rateScale": 0.7,
+      "logLoss": 1.0963263519874928
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 0,
+      "rateScale": 0.7,
+      "logLoss": 1.0963644647039101
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 0,
+      "rateScale": 1.3,
+      "logLoss": 1.0968540509944245
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 20,
+      "rateScale": 1.3,
+      "logLoss": 1.096876539868675
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 100,
+      "rateScale": 1.3,
+      "logLoss": 1.0969865230626166
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 100,
+      "rateScale": 0.7,
+      "logLoss": 1.0987904732708722
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 20,
+      "rateScale": 0.7,
+      "logLoss": 1.0988309913231746
+    },
+    {
+      "cadence": 10,
+      "priorSeconds": 0,
+      "rateScale": 0.7,
+      "logLoss": 1.0988481050561043
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 0,
+      "rateScale": 1.3,
+      "logLoss": 1.10022431777023
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 20,
+      "rateScale": 1.3,
+      "logLoss": 1.1002447298077775
+    },
+    {
+      "cadence": 5,
+      "priorSeconds": 100,
+      "rateScale": 1.3,
+      "logLoss": 1.100347495584608
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 0,
+      "rateScale": 1.3,
+      "logLoss": 1.1024500907051695
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 20,
+      "rateScale": 1.3,
+      "logLoss": 1.1024763574901428
+    },
+    {
+      "cadence": 2,
+      "priorSeconds": 100,
+      "rateScale": 1.3,
+      "logLoss": 1.1026016191458015
+    }
+  ],
+  "validation": [
+    {
+      "seconds": 1,
+      "chain": {
+        "count": 5686,
+        "logLoss": 0.4914540737777239,
+        "brier": 0.21171713214361568,
+        "accuracy": 0.8809356313753077
+      },
+      "frequency": {
+        "count": 5686,
+        "logLoss": 1.6859980681459363,
+        "brier": 0.7537179712181304,
+        "accuracy": 0.4403798804080197
+      },
+      "direct": {
+        "count": 5686,
+        "logLoss": 0.4887958049892282,
+        "brier": 0.21126558479686852,
+        "accuracy": 0.8809356313753077
+      }
+    },
+    {
+      "seconds": 3,
+      "chain": {
+        "count": 5640,
+        "logLoss": 0.9382132020846505,
+        "brier": 0.4300568703782842,
+        "accuracy": 0.7136524822695035
+      },
+      "frequency": {
+        "count": 5640,
+        "logLoss": 1.682043638943283,
+        "brier": 0.7518950063389077,
+        "accuracy": 0.4429078014184397
+      },
+      "direct": {
+        "count": 5640,
+        "logLoss": 0.9307474602277899,
+        "brier": 0.42871552255342027,
+        "accuracy": 0.7136524822695035
+      }
+    },
+    {
+      "seconds": 5,
+      "chain": {
+        "count": 5594,
+        "logLoss": 1.1786812600027314,
+        "brier": 0.534957415024063,
+        "accuracy": 0.6074365391490884
+      },
+      "frequency": {
+        "count": 5594,
+        "logLoss": 1.6785882405815729,
+        "brier": 0.7502197705332216,
+        "accuracy": 0.44529853414372544
+      },
+      "direct": {
+        "count": 5594,
+        "logLoss": 1.1716232323037008,
+        "brier": 0.5338199786793525,
+        "accuracy": 0.6074365391490884
+      }
+    },
+    {
+      "seconds": 10,
+      "chain": {
+        "count": 5479,
+        "logLoss": 1.4765839192637173,
+        "brier": 0.6591098654936501,
+        "accuracy": 0.4648658514327432
+      },
+      "frequency": {
+        "count": 5479,
+        "logLoss": 1.6688786201648789,
+        "brier": 0.7454941923915377,
+        "accuracy": 0.4520897974082862
+      },
+      "direct": {
+        "count": 5479,
+        "logLoss": 1.4664065546042566,
+        "brier": 0.6566237179100495,
+        "accuracy": 0.4681511224676036
+      }
+    },
+    {
+      "seconds": 20,
+      "chain": {
+        "count": 5252,
+        "logLoss": 1.6240721141699421,
+        "brier": 0.7237978268256974,
+        "accuracy": 0.4613480578827113
+      },
+      "frequency": {
+        "count": 5252,
+        "logLoss": 1.6539460114086595,
+        "brier": 0.7387544150561801,
+        "accuracy": 0.4613480578827113
+      },
+      "direct": {
+        "count": 5252,
+        "logLoss": 1.6134791880930954,
+        "brier": 0.7199064456828311,
+        "accuracy": 0.4613480578827113
+      }
+    }
+  ]
+}

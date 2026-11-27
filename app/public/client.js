@@ -9,7 +9,9 @@ import {buildAccess,accessColour} from './access.js';
 import {possessionSource,POSSESSION_HOLD_FRAMES} from './possession.js';
 import {buildDanger,dangerColour,teamScaleColour} from './danger.js';
 import {vertices,area,inside} from './geometry.js';
+import {createMarkovView} from './markov-view.js';
 const $=id=>document.getElementById(id),canvas=$('pitch'),ctx=canvas.getContext('2d');
+const markovView=createMarkovView(url=>get(url),$);
 let frames=[],meta,phases=[],index=0,playing=false,last=0,triangles=[],selected=null,transform,request=0;
 let chances=[],loadedChance=null,passingData=null,currentView='tiling';
 const passPlayback=new PassPlayback();let passSnapshot=null;
@@ -428,6 +430,8 @@ function draw(){
  const hideOptimizer=currentView!=='optimizer'||!frames.length;
  if (hideOptimizer) $('optimizerCharts').hidden = true;
  $('optimizerControls').hidden=hideOptimizer||(playing&&!clipOptimizer?.worker);
+ const isMarkov=currentView==='markov';
+ if(isMarkov)markovView.render(frames[index],meta);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
  const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
@@ -435,7 +439,7 @@ function draw(){
  const optimizerTeam=plausible?'all':snapshot?.team==null?'unknown':String(snapshot.team);
  const points=vertices(f,meta,{team:isOptimizer?optimizerTeam:$('team').value,ball:isOptimizer||$('ball').checked,detectedOnly:!isOptimizer&&$('detected').checked});
  let danger,holdLabel='';
- if(!isOptimizer){
+ if(!isOptimizer&&!isMarkov){
  const source=possessionSource(frames,index),calculationIndex=source.index??index;
  const calculationFrame=frames[calculationIndex];
  danger=buildDanger(calculationFrame,frames[calculationIndex-1],meta);
@@ -484,13 +488,16 @@ function draw(){
  }
  }
  ctx.globalAlpha=1;ctx.setLineDash([]);ctx.strokeStyle='#6c9690';ctx.lineWidth=1;ctx.strokeRect(...px(-L/2,W/2),L*scale,W*scale);ctx.beginPath();ctx.moveTo(...px(0,-W/2));ctx.lineTo(...px(0,W/2));ctx.stroke();ctx.beginPath();ctx.arc(...px(0,0),9.15*scale,0,Math.PI*2);ctx.stroke();for(const side of [-1,1]){const x=side<0?-L/2:L/2-16.5;ctx.strokeRect(...px(x,20.16),16.5*scale,40.32*scale);const gx=side<0?-L/2:L/2-5.5;ctx.strokeRect(...px(gx,9.16),5.5*scale,18.32*scale);}
- vertices(f,meta,{team:isOptimizer?optimizerTeam:isIntegrity?'all':$('team').value,ball:true,detectedOnly:!isOptimizer&&$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');if(ball){drawSoccerBall(...px(p.x,p.y),dangerColour(danger?.current),p.is_detected);return;}ctx.beginPath();ctx.arc(...px(p.x,p.y),Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=teamColour(p.team);ctx.fill();const showEstimate=!isOptimizer&&!p.is_detected&&$('showEstimates').checked;ctx.strokeStyle=showEstimate?'#ffcc81':'#102321';ctx.setLineDash(showEstimate?[2,2]:[]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
+ vertices(f,meta,{team:isOptimizer?optimizerTeam:isIntegrity||isMarkov?'all':$('team').value,ball:true,detectedOnly:!isOptimizer&&!isMarkov&&$('detected').checked}).forEach(p=>{const ball=p.members.some(v=>v.id==='ball');if(ball){drawSoccerBall(...px(p.x,p.y),dangerColour(danger?.current),p.is_detected);return;}ctx.beginPath();ctx.arc(...px(p.x,p.y),Math.max(6,scale*1.2),0,Math.PI*2);ctx.fillStyle=teamColour(p.team);ctx.fill();const showEstimate=!isOptimizer&&!p.is_detected&&$('showEstimates').checked;ctx.strokeStyle=showEstimate?'#ffcc81':'#102321';ctx.setLineDash(showEstimate?[2,2]:[]);ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);if(!ball){ctx.fillStyle='#ffffff';ctx.font='bold 9px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.number??'?',...px(p.x,p.y));}});
  if(isOptimizer){
   const result=optimizerControls(f,snapshot);
   if(plausible)drawPlausibleArrows(px);
   else drawOptimizedDefenders(result,snapshot.keeper,px,scale);
   $('teamLegend').textContent=plausible?'Tracked players · gold arrows = recommended moves over the next second'
    :'Tracked attackers · gold rings = optimized defenders · GK = tracked goalkeeper';
+  $('fillLegend').textContent='';
+ }else if(isMarkov){
+  $('teamLegend').textContent='Tracked players and ball at the selected frame';
   $('fillLegend').textContent='';
  }else drawPassAdvice(px);
  $('estimateLegend').hidden=!$('showEstimates').checked;
@@ -617,24 +624,27 @@ function setViewMode(value){
  if(currentView==='tiling')tilingHalos=$('showReceiving').checked;
  if(currentView==='integrity')integrityHalos=$('showReceiving').checked;
  currentView=value;
- const integrity=value==='integrity', optimizer=value==='optimizer';
+ const integrity=value==='integrity', optimizer=value==='optimizer', markov=value==='markov';
  $('viewTiling').setAttribute('aria-pressed',String(value==='tiling'));
  $('viewIntegrity').setAttribute('aria-pressed',String(integrity));
  $('viewOptimizer').setAttribute('aria-pressed',String(optimizer));
+ $('viewMarkov').setAttribute('aria-pressed',String(markov));
+ $('markovPanel').hidden=!markov;
  $('help-viewIntegrity').hidden=!integrity;
  if(!optimizer)$('showReceiving').checked=integrity?integrityHalos:tilingHalos;
  document.body.classList.toggle('integrity-view',integrity);
  document.body.classList.toggle('optimizer-view',optimizer);
+ document.body.classList.toggle('markov-view',markov);
  $('meshSummary').textContent=optimizer?'Settings':'Mesh & colour settings';
- $('meshOptions').hidden=optimizer;
+ $('meshOptions').hidden=optimizer||markov;
  $('optimizerSettings').hidden=!optimizer;
  $('optimizerControls').hidden=!optimizer||!frames.length;
  $('tilingSettings').hidden=value!=='tiling';
  $('integritySettings').hidden=!integrity;
- $('toggleDanger').disabled=optimizer;
+ $('toggleDanger').disabled=optimizer||markov;
  $('dangerPanel').hidden=true;
  $('toggleDanger').setAttribute('aria-expanded','false');
- canvas.setAttribute('aria-label',optimizer?'Pitch showing the attack and any optimized defensive positions':'Interactive pitch: click a triangle to inspect its vertices and area');
+ canvas.setAttribute('aria-label',markov?'Pitch showing the selected tracking frame':optimizer?'Pitch showing the attack and any optimized defensive positions':'Interactive pitch: click a triangle to inspect its vertices and area');
  selected=null;
  $('inspectorTitle').textContent=integrity?'Defensive integrity diagnostics':'Tile inspector';
  $('inspect').textContent='Pause and click a triangle to inspect it.';
@@ -643,6 +653,11 @@ function setViewMode(value){
 $('viewTiling').onclick=()=>setViewMode('tiling');
 $('viewIntegrity').onclick=()=>setViewMode('integrity');
 $('viewOptimizer').onclick=()=>setViewMode('optimizer');
+$('viewMarkov').onclick=()=>{
+ setViewMode('markov');
+ return markovView.load(draw);
+};
+for(const id of ['markovMode','markovHorizon','markovTarget'])$(id).oninput=()=>markovView.render(frames[index],meta);
 for(const id of ['integrityColour','legacyDanger','integrityTiles','integrityConnections','integrityMarking','integrityFacing'])$(id).onchange=()=>{$('legacySetting').hidden=$('integrityColour').value!=='danger';draw();};
 async function startup(){
  let expected=++request;

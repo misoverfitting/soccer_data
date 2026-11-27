@@ -169,3 +169,28 @@ body.pitch-focus{overflow:hidden}
  .optimizer-view #optimizerCharts{padding:16px 18px 10px}
  .optimizer-view #optimizerCharts canvas{height:clamp(145px,19vh,205px)}
 }
+
+.view-toggle{flex-wrap:wrap}
+.markov-view #controls,.markov-view .disclosure-triangle,.markov-view .tiling-edge-legend,
+.markov-view #clipDetails article{display:none}
+.markov-view #toggleDanger:disabled{cursor:default;opacity:1}
+.markov-view #pitch{cursor:default}
+#markovPanel{padding:18px;border:1px solid #293a41;border-radius:12px;background:#142128;align-self:start}
+#markovPanel h2{font-size:19px;margin-bottom:8px}
+#markovPanel p{color:#b7cbd1;line-height:1.5;margin:8px 0}
+#markovPanel a{color:#a6ead0}
+#markovHorizon{padding:0;accent-color:#a6ead0}
+#markovSeconds{float:right;color:#e1ecee;font-variant-numeric:tabular-nums}
+#markovOutput{list-style:none;padding:0;margin:10px 0 16px}
+#markovOutput li{display:grid;grid-template-columns:minmax(135px,1.6fr) minmax(36px,1fr) 4ch;gap:9px;align-items:center;padding:5px 0;font-size:12px}
+#markovOutput li span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+#markovOutput meter{width:100%;height:12px}
+#markovOutput meter::-webkit-meter-optimum-value{background:#a6ead0}
+#markovOutput meter::-moz-meter-bar{background:#a6ead0}
+.markov-table{overflow-x:auto}
+.markov-table table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;text-align:right}
+.markov-table caption{text-align:left;margin:4px 0 8px;color:#b7cbd1}
+.markov-table th,.markov-table td{padding:6px 4px;border-bottom:1px solid #3d535c}
+.markov-table th:first-child,.markov-table td:first-child{text-align:left;white-space:nowrap}
+@media(min-width:901px){.markov-view main{grid-template-columns:minmax(310px,36%) minmax(0,1fr)}}
+@media(max-width:900px){#markovPanel{order:1;width:100%}}

@@ -1,9 +1,7 @@
-import { createReadStream } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { availableParallelism } from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
-import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
 import { execFileSync } from 'node:child_process';
@@ -12,22 +10,10 @@ import { optimizeDefense } from '../public/defensive-position-optimizer.js';
 import { buildIntegrity } from '../public/integrity.js';
 import { plausibleSamples, summarizePath } from '../public/optimizer-path.js';
 import { POSSESSION_HOLD_FRAMES } from '../public/possession.js';
+import { trackingStream } from '../tracking-stream.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const catalogue = JSON.parse(await readFile(path.join(root, 'app/chance-catalogue.json'), 'utf8'));
-
-async function trackingStream(file, id, gitDirectory) {
-  if ((await stat(file)).size > 1024) return createReadStream(file);
-  const hash = (await readFile(file, 'utf8')).match(/oid sha256:([a-f0-9]{64})/)?.[1];
-  if (hash && gitDirectory) {
-    const object = path.join(gitDirectory, 'lfs', 'objects', hash.slice(0, 2), hash.slice(2, 4), hash);
-    if (await stat(object).then(() => true, () => false)) return createReadStream(object);
-  }
-  const base = 'https://media.githubusercontent.com/media/misoverfitting/soccer_data';
-  const response = await fetch(`${base}/${catalogue.sourceCommit}/data/matches/${id}/${path.basename(file)}`);
-  if (!response.ok) throw new Error(`Tracking download for ${id} returned ${response.status}`);
-  return Readable.fromWeb(response.body);
-}
 
 async function analyzeMatch(id, gitDirectory) {
   const clips = catalogue.matches[id].filter(clip => clip.highDanger);
@@ -39,7 +25,7 @@ async function analyzeMatch(id, gitDirectory) {
     (_, i) => clip.startFrame - POSSESSION_HOLD_FRAMES + i,
   )));
   const tracking = new Map();
-  const stream = await trackingStream(`${prefix}_tracking_extrapolated.jsonl`, id, gitDirectory);
+  const stream = await trackingStream(`${prefix}_tracking_extrapolated.jsonl`, id, gitDirectory, catalogue.sourceCommit);
   for await (const line of createInterface({ input: stream, crlfDelay: Infinity })) {
     if (!line.trim()) continue;
     const frame = JSON.parse(line);

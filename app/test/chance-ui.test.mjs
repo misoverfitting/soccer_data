@@ -52,7 +52,12 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  sandbox.createJointMarkovView=vm.runInNewContext(`(()=>{${jointView}\nreturn createJointMarkovView;})()`,sandbox);
  const client=(await readFile(new URL('../public/client.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
  await vm.runInNewContext(`(async()=>{${client}\n})()`,sandbox);
- assert.equal(element('viewOptimizer')['aria-pressed'],'true','Optimizer starts selected');
+ assert.equal(element('viewMarkov')['aria-pressed'],'true','Kolmogorov starts selected');
+ assert.equal(element('viewOptimizer')['aria-pressed'],'false');
+ assert.equal(element('markovPanel').hidden,false);
+ assert.equal(element('markovJoint').hidden,false);
+ assert.match(element('markovJointFit').textContent,/complete training transitions/);
+ element('viewOptimizer').onclick();
  assert.equal(element('optimizerSettings').hidden,false);
  assert.equal(element('meshOptions').hidden,true);
  assert.equal(element('meshSummary').textContent,'Settings');

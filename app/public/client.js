@@ -719,5 +719,5 @@ async function startup(){
   else $('startupLoading').textContent='Unable to load tracking. Please try Return to bundled demo.';
  }
 }
-setViewMode('optimizer');
-await startup();
+setViewMode('markov');
+await Promise.all([selectMarkovModel(),startup()]);

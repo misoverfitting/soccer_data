@@ -1,0 +1,178 @@
+{
+  "training": [
+    {
+      "id": 1874553,
+      "date": "2024-11-23T06:00:00Z",
+      "fixture": "Brisbane Roar FC vs Adelaide United Football Club",
+      "frames": 59713
+    },
+    {
+      "id": 1886347,
+      "date": "2024-11-30T04:00:00Z",
+      "fixture": "Auckland FC vs Newcastle United Jets FC",
+      "frames": 58464
+    },
+    {
+      "id": 1899585,
+      "date": "2024-12-07T04:00:00Z",
+      "fixture": "Auckland FC vs Wellington Phoenix FC",
+      "frames": 59783
+    },
+    {
+      "id": 1925299,
+      "date": "2024-12-21T06:00:00Z",
+      "fixture": "Brisbane Roar FC vs Perth Glory Football Club",
+      "frames": 60759
+    },
+    {
+      "id": 1927964,
+      "date": "2024-12-22T06:00:00Z",
+      "fixture": "Western Sydney Wanderers FC vs Wellington Phoenix FC",
+      "frames": 58396
+    },
+    {
+      "id": 1953632,
+      "date": "2024-12-31T08:00:00Z",
+      "fixture": "Central Coast Mariners Football Club vs Melbourne City FC",
+      "frames": 58346
+    },
+    {
+      "id": 1959846,
+      "date": "2025-01-10T08:35:00Z",
+      "fixture": "Melbourne Victory Football Club vs Western United",
+      "frames": 57941
+    },
+    {
+      "id": 1986691,
+      "date": "2025-01-26T06:00:00Z",
+      "fixture": "Western Sydney Wanderers FC vs Auckland FC",
+      "frames": 57498
+    },
+    {
+      "id": 1996436,
+      "date": "2025-02-01T04:00:00Z",
+      "fixture": "Auckland FC vs Macarthur FC",
+      "frames": 60118
+    }
+  ],
+  "holdout": {
+    "id": 1996435,
+    "date": "2025-02-01T06:00:00Z",
+    "fixture": "Sydney Football Club vs Adelaide United Football Club",
+    "frames": 56967
+  },
+  "sourceCommit": "4340d274572876239c154c90bc507a9b3250a656",
+  "parameters": {
+    "player": {
+      "lookback": 3,
+      "halfLife": 2,
+      "positionMix": 0,
+      "cvNll": 5.99131165470469,
+      "variance": 0.6010440530729935
+    },
+    "ball": {
+      "lookback": 3,
+      "halfLife": 1,
+      "positionMix": 0.5,
+      "cvNll": 8.027455031063374,
+      "variance": 12.656744915448838
+    }
+  },
+  "validation": [
+    {
+      "seconds": 1,
+      "player": {
+        "count": 85136,
+        "rmse": 0.8907597510178207,
+        "persistence": 2.600091501080629,
+        "constantVelocity": 0.8794865334350286,
+        "nll": 1.988852230625323,
+        "coverage80": 0.8887192257094532
+      },
+      "ball": {
+        "count": 4257,
+        "rmse": 4.701356144182394,
+        "persistence": 6.781039417651577,
+        "constantVelocity": 5.285438563852302,
+        "nll": 5.2492282356286575,
+        "coverage80": 0.8435517970401691
+      }
+    },
+    {
+      "seconds": 3,
+      "player": {
+        "count": 82292,
+        "rmse": 4.641674785395809,
+        "persistence": 7.378239819944601,
+        "constantVelocity": 5.068518551721309,
+        "nll": 5.216037887106738,
+        "coverage80": 0.7923248918485394
+      },
+      "ball": {
+        "count": 4115,
+        "rmse": 14.59344219873476,
+        "persistence": 16.468362977957316,
+        "constantVelocity": 20.58660520346081,
+        "nll": 7.512284851908712,
+        "coverage80": 0.7720534629404617
+      }
+    },
+    {
+      "seconds": 5,
+      "player": {
+        "count": 79448,
+        "rmse": 8.812780678154065,
+        "persistence": 11.425957238975828,
+        "constantVelocity": 10.700302126595439,
+        "nll": 6.518465524204368,
+        "coverage80": 0.7496727419192428
+      },
+      "ball": {
+        "count": 3973,
+        "rmse": 22.020880120770613,
+        "persistence": 23.393012903552332,
+        "constantVelocity": 36.83024485584068,
+        "nll": 8.333619078112266,
+        "coverage80": 0.7583689906871381
+      }
+    },
+    {
+      "seconds": 10,
+      "player": {
+        "count": 73578,
+        "rmse": 17.250018828122112,
+        "persistence": 18.849760350128623,
+        "constantVelocity": 25.85919045805469,
+        "nll": 7.881963442674286,
+        "coverage80": 0.7291038082035391
+      },
+      "ball": {
+        "count": 3680,
+        "rmse": 34.373924090419564,
+        "persistence": 34.85513348209053,
+        "constantVelocity": 76.88441836013389,
+        "nll": 9.220120646759872,
+        "coverage80": 0.7592391304347826
+      }
+    },
+    {
+      "seconds": 20,
+      "player": {
+        "count": 67270,
+        "rmse": 25.869904541379054,
+        "persistence": 25.98774068170525,
+        "constantVelocity": 54.16306841454012,
+        "nll": 8.65607525256874,
+        "coverage80": 0.7662702541994946
+      },
+      "ball": {
+        "count": 3365,
+        "rmse": 45.28048895779586,
+        "persistence": 44.424703685710135,
+        "constantVelocity": 152.50333952196746,
+        "nll": 9.792570015798033,
+        "coverage80": 0.8526002971768202
+      }
+    }
+  ]
+}

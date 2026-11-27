@@ -392,23 +392,33 @@ function drawPlausibleArrows(px) {
  if (!arrows?.length || !opacity || !progress) return;
  ctx.save();
  ctx.globalAlpha=opacity;
- ctx.strokeStyle='#ffcf79';
+ ctx.strokeStyle='#102321';
  ctx.fillStyle='#ffcf79';
- ctx.lineWidth=2.5;
- ctx.lineCap='round';
+ ctx.lineWidth=2;
+ ctx.lineJoin='round';
  for (const { from, to } of arrows) {
   const [x,y]=px(from.x,from.y);
   const [tx,ty]=px(to.x,to.y);
   const dx=tx-x,dy=ty-y,length=Math.hypot(dx,dy);
-  if (length<2) continue;
-  const tipX=x+dx*progress,tipY=y+dy*progress;
-  const head=Math.min(7,length*progress*0.65);
+  const visibleLength=length*progress;
+  if (visibleLength<2) continue;
   const ux=dx/length,uy=dy/length;
-  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(tipX,tipY);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(tipX,tipY);
-  ctx.lineTo(tipX-ux*head-uy*head*0.55,tipY-uy*head+ux*head*0.55);
-  ctx.lineTo(tipX-ux*head+uy*head*0.55,tipY-uy*head-ux*head*0.55);
-  ctx.closePath();ctx.fill();
+  const tipX=x+ux*visibleLength,tipY=y+uy*visibleLength;
+  const headLength=Math.min(12,visibleLength*0.8);
+  const headWidth=Math.max(3,headLength*0.55);
+  const neckX=tipX-ux*headLength,neckY=tipY-uy*headLength;
+  const shaftWidth=1.25;
+  ctx.beginPath();
+  ctx.moveTo(x-uy*shaftWidth,y+ux*shaftWidth);
+  ctx.lineTo(neckX-uy*shaftWidth,neckY+ux*shaftWidth);
+  ctx.lineTo(neckX-uy*headWidth,neckY+ux*headWidth);
+  ctx.lineTo(tipX,tipY);
+  ctx.lineTo(neckX+uy*headWidth,neckY-ux*headWidth);
+  ctx.lineTo(neckX+uy*shaftWidth,neckY-ux*shaftWidth);
+  ctx.lineTo(x+uy*shaftWidth,y-ux*shaftWidth);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fill();
  }
  ctx.restore();
 }

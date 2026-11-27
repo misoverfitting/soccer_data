@@ -46,7 +46,7 @@
    <p id="markovJointStatus" role="status"></p>
    <p id="markovJointReadout"></p>
    <p>Squares show one possible whole frame a second ahead. The color scale updates for the focused entity and frame.</p>
-   <p>During playback, each usable snapshot holds for three seconds. The previous projection fades first, then the new one appears before the next tracked second plays.</p>
+   <p>During playback, each usable snapshot holds for three seconds. The previous projection fades first, then the new one appears. Playback can pause at a pass release and continues through the flight.</p>
    <p>Each input includes the ball and the 20 outfield players, with their 1 m cells, signed one-second velocities, and distances to the ball. Players are ordered by depth within each team from its own goal, and keep their identity across the transition.</p>
    <p>One regularized regression maps the entire snapshot to 42 mean displacement coordinates. A single correlated Gaussian draw gives a displacement vector for the whole frame. Rounding yields integer cell movements, which determine both the next positions and velocities. The backward tool sums the selected entity’s marginal cell probabilities in the target area.</p>
    <p>Leave-one-match-out validation on nine games selected the regression penalty and covariance shrinkage. Training required the same 20 outfield players and ball at the previous, current, and next snapshots. Substitutions, red cards, and missing tracks can leave a frame outside the model.</p>

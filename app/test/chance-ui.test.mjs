@@ -278,6 +278,18 @@ for(const mobile of [false,true])test(`client chance playback and ${mobile?'mobi
  element('scrub').oninput();
  assert.match(element('markovJointReadout').textContent,/recorded intended receiver.*modeled completion/);
  assert.match(element('markovPassValue').textContent,/Unavailable during transit/);
+ element('scrub').value=34;
+ element('scrub').oninput();
+ const passPlaybackStart=now;
+ element('play').onclick();
+ stepPlayback(passPlaybackStart+100);
+ assert.equal(Number(element('scrub').value),35,'replay pauses at pass release');
+ stepPlayback(passPlaybackStart+3099);
+ assert.equal(Number(element('scrub').value),35);
+ stepPlayback(passPlaybackStart+3600);
+ assert.equal(Number(element('scrub').value),40);
+ stepPlayback(passPlaybackStart+3700);
+ assert.equal(Number(element('scrub').value),41,'replay advances through the mid-flight checkpoint');
  element('scrub').value=45;
  element('scrub').oninput();
  assert.match(element('markovPassValue').textContent,/EPV/);

@@ -135,6 +135,7 @@ export function createJointMarkovView(get, element) {
     stops = frames.flatMap((frame, index) => {
       const pass = passInTransit(passes, frame);
       if (pass?.release === frame.frame && index < frames.length - 1) return [{ index }];
+      if (pass) return [];
       const before = frames[index - 10], after = frames[index + 10];
       if ((frame.frame - first) % 10 !== 0 || before?.period !== frame.period || after?.period !== frame.period
         || before.frame !== frame.frame - 10 || after.frame !== frame.frame + 10) return [];

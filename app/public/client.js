@@ -61,7 +61,7 @@ function renderIntegrity(f,px,L,W,scale,poly){
  if(key!==integrityPaintKey){
   const legacy=kind==='danger'&&$('legacyDanger').checked?buildDanger(f,frames[index-1],meta):null;
   const pixels=new Uint8ClampedArray(g.width*g.height*4);
-  g.cells.forEach((c,i)=>{const value=kind==='control'?c.control:kind==='pass'?c.passValue:legacy?legacy.potential(c):c.gain;pixels.set(kind==='tiles'?[0,0,0,0]:legacy?[...dangerColour(value).match(/\d+/g).map(Number),185]:integrityColour(value,kind==='control'?'control':'gain'),i*4);});
+  g.cells.forEach((c,i)=>{const value=kind==='control'?c.control:kind==='keep'?(c.carryReachable?c.keep:NaN):kind==='pass'?c.passValue:legacy?legacy.potential(c):c.gain;pixels.set(kind==='tiles'?[0,0,0,0]:legacy?[...dangerColour(value).match(/\d+/g).map(Number),185]:integrityColour(value,kind==='control'||kind==='keep'?'control':'gain'),i*4);});
   integrityCanvas.width=g.width;integrityCanvas.height=g.height;integrityCtx.putImageData(new ImageData(pixels,g.width,g.height),0,0);integrityPaintKey=key;
  }
  if(kind!=='tiles'){ctx.save();ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;ctx.drawImage(integrityCanvas,...px(-L/2,W/2),L*scale,W*scale);ctx.restore();}
@@ -75,8 +75,9 @@ function renderIntegrity(f,px,L,W,scale,poly){
  ctx.setLineDash([]);
  const n=v=>v==null||!Number.isFinite(v)?'—':v.toFixed(3);
  const free=model.freeDanger(),freeNames=free.who.map(m=>meta.players.find(p=>p.id===m.attacker.player_id)?.short_name??String(m.attacker.player_id)).join(' + ');
- $('inspect').textContent=`Integrity (value-weighted protection): ${n(g.integrity)} · Danger (top two free attackers, 3 s ahead): ${n(free.danger)}${freeNames?' · '+freeNames:''} · Threat available: ${n(g.threat)} · Assignment marking: ${n(diagnostic.marking)} · Nearest-attacker marking: ${n(diagnostic.nearestMarking)} · Most dangerous free attacker: ${diagnostic.free??'—'} · Orientation: ${n(diagnostic.orientation)} · Old tile integrity: ${n(diagnostic.oldIntegrity)} · Broken links: ${diagnostic.links.filter(l=>l.strength<.5).length}/${diagnostic.links.length} · Stretched tiles: ${diagnostic.tiles.filter(t=>t.stretched).length}`;
- $('fillLegend').textContent=kind==='control'?'Pitch control: blue defence · neutral 50% · red attack':kind==='tiles'?'Defensive tiles / links: red weak · green strong':kind==='pass'?'Receiver-specific pass value: blue EPV loss · red EPV gain':$('legacyDanger').checked?'Legacy potential danger · original spatial EPV proxy':'Notebook potential danger · net EPV gain after interception and turnover risk';
+ const onBallName=model.carrier?meta.players.find(p=>p.id===model.carrier.player_id)?.short_name??String(model.carrier.player_id):'nobody';
+ $('inspect').textContent=`Integrity (value-weighted protection, passes and carries): ${n(g.integrity)} · On the ball (carries): ${onBallName} · Danger (top two free attackers, 3 s ahead): ${n(free.danger)}${freeNames?' · '+freeNames:''} · Threat available: ${n(g.threat)} · Assignment marking: ${n(diagnostic.marking)} · Nearest-attacker marking: ${n(diagnostic.nearestMarking)} · Most dangerous free attacker: ${diagnostic.free??'—'} · Orientation: ${n(diagnostic.orientation)} · Old tile integrity: ${n(diagnostic.oldIntegrity)} · Broken links: ${diagnostic.links.filter(l=>l.strength<.5).length}/${diagnostic.links.length} · Stretched tiles: ${diagnostic.tiles.filter(t=>t.stretched).length}`;
+ $('fillLegend').textContent=kind==='control'?'Pitch control: blue defence · neutral 50% · red attack':kind==='keep'?(model.carrier?'Carry: chance the player on the ball keeps it running there · blue lost · red kept · grey out of reach':'Carry: nobody on the ball in this frame'):kind==='tiles'?'Defensive tiles / links: red weak · green strong':kind==='pass'?'Receiver-specific pass value: blue EPV loss · red EPV gain':$('legacyDanger').checked?'Legacy potential danger · original spatial EPV proxy':'Notebook potential danger · net EPV gain after interception and turnover risk';
 }
 
 const haloCanvas=document.createElement('canvas'),haloCtx=haloCanvas.getContext('2d');
@@ -208,7 +209,8 @@ function drawSoccerBall(x,y,tint,detected){
 let optimizerState = null;
 let clipOptimizer = null;
 let plausibleHold = null, plausibleTime = 0;
-const optimizerLabels = { integrity:'Integrity', freedanger:'Danger', danger:'Threat', epv:'EPV' };
+const optimizerLabels = { integrity:'Integrity', freedanger:'Danger', threat:'Threat', danger:'Threat', epv:'EPV' };
+const optimizerFitted = () => ({ settings:passingData.settings, valueModel:passingData.valueModel, carryModel:passingData.carryModel });
 
 function clearClipOptimizer() {
  clipOptimizer?.worker?.terminate();
@@ -225,7 +227,7 @@ function findClipOptimums(plausible) {
  clearClipOptimizer();
  const metric = $('optimizerMetric').value;
  const sampleClip = plausible ? plausibleSamples : clipSamples;
- const samples = sampleClip(frames, meta, passingData.physical);
+ const samples = sampleClip(frames, meta, passingData.physical, passingData.onBall);
  const state = clipOptimizer = { request, plausible, completed:0, total:samples.length };
  if (!samples.some(sample => sample.scene)) {
   state.error = 'No frames have enough tracking data to calculate clip optimums.';
@@ -268,7 +270,7 @@ function findClipOptimums(plausible) {
   worker.onerror = () => finish({ error:'The clip optimizer could not run.' });
   worker.postMessage({
    scenes:samples.map(({ scene }) => scene ? { ...scene, metric } : null),
-   fitted:{ settings:passingData.settings, valueModel:passingData.valueModel },
+   fitted:optimizerFitted(),
   });
  } catch (error) {
   finish({ error:error.message });
@@ -337,7 +339,7 @@ function optimizerControls(frame, snapshot) {
 $('findOptimum').onclick = () => {
  const frame = frames[index];
  if (currentView !== 'optimizer' || !frame || playing || $('findOptimum').disabled) return;
- const snapshot = optimizerSnapshot(frames, index, meta, passingData?.physical);
+ const snapshot = optimizerSnapshot(frames, index, meta, passingData?.physical, passingData?.onBall);
  if (!snapshot.scene || !passingData?.valueModel) return;
  if (clipOptimizer?.plausible) clearClipOptimizer();
  clearOptimizer();
@@ -352,9 +354,7 @@ $('findOptimum').onclick = () => {
   };
   worker.onmessage = event => finish(event.data);
   worker.onerror = () => finish({error:'The optimizer could not run.'});
-  worker.postMessage({scene:{...snapshot.scene, metric:state.metric}, fitted:{
-   settings:passingData.settings, valueModel:passingData.valueModel,
-  }});
+  worker.postMessage({scene:{...snapshot.scene, metric:state.metric}, fitted:optimizerFitted()});
  } catch (error) {
   state.worker?.terminate();
   Object.assign(state, {worker:null, error:error.message});
@@ -418,7 +418,7 @@ function draw(){
  $('optimizerControls').hidden=hideOptimizer||(playing&&!clipOptimizer?.worker);
  fitPlaybackViewport();if(!meta||!frames.length)return;const rect=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);const pixelWidth=Math.round(rect.width*dpr),pixelHeight=Math.round(rect.height*dpr);if(canvas.width!==pixelWidth)canvas.width=pixelWidth;if(canvas.height!==pixelHeight)canvas.height=pixelHeight;ctx.setTransform(dpr,0,0,dpr,0,0);const w=rect.width,h=rect.height,L=meta.pitch_length,W=meta.pitch_width,sidePadding=currentView==='optimizer'?24:48,scale=Math.min((w-sidePadding)/L,(h-40)/W);transform={scale,ox:w/2,oy:h/2};const px=(x,y)=>[w/2+x*scale,h/2-y*scale];
  ctx.fillStyle='#102b29';ctx.fillRect(0,0,w,h);const f=frames[index],isIntegrity=currentView==='integrity',isOptimizer=currentView==='optimizer';
- const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical):null;
+ const snapshot=isOptimizer?optimizerSnapshot(frames,index,meta,passingData?.physical,passingData?.onBall):null;
  const plausible=isOptimizer&&Boolean(clipOptimizer?.stops);
  const optimizerTeam=plausible?'all':snapshot?.team==null?'unknown':String(snapshot.team);
  const points=vertices(f,meta,{team:isOptimizer?optimizerTeam:$('team').value,ball:isOptimizer||$('ball').checked,detectedOnly:!isOptimizer&&$('detected').checked});

@@ -4,18 +4,34 @@ The header switches between the original Pitch Tiling viewer and Defensive
 Integrity. The app opens in Optimizer. The Defensive Integrity toggle shows the model
 legend as a tooltip only while selected. Both views use the same clips and playback controls. Integrity defaults to
 pitch control, players and ball, with tiles, links, facing and halos off. Mesh
-settings offers four maps plus optional defender links, tiles, marking assignments
-and facing indicators. The diagnostic panel reports current protection, danger,
-threat, assignment and nearest-attacker marking, free attacker, orientation, legacy
-tile integrity, broken links and stretched tiles.
+settings offers five maps plus optional defender links, tiles, marking assignments
+and facing indicators. The diagnostic panel reports current protection, the player
+on the ball, danger, threat, assignment and nearest-attacker marking, free attacker,
+orientation, legacy tile integrity, broken links and stretched tiles.
 
 The equations and saved fits come from `defensive_shape_integrity.ipynb` on main:
 
 - Pitch control: the fitted arrival-time race, including reaction, turning,
   individual acceleration and top speed, and the ball-time tie break.
-- Potential danger: `P_success * V_context - (1-P_success) * V_opponent - V_ball`.
-  The Legacy definition switch uses the original viewer's spatial EPV proxy and
-  original colour scale instead.
+- Potential danger: the better of a pass or a carry by the player on the ball,
+  `max(G_pass, G_carry)`, with `G_pass = P_success * V_context - (1-P_success) * V_opponent - V_ball`
+  and `G_carry` below. This is the notebook's v3 gain. The Legacy definition switch
+  uses the original viewer's spatial EPV proxy and original colour scale instead.
+- Carries (notebook Section 4c, `carry_options`; the model viewer's v3): `P_keep`, the
+  chance the player on the ball keeps it running in a straight line to each spot, from
+  the survival model fitted in `defensive_shape_fitting.ipynb`
+  (`notebooks/fitted/carry_model.json`). The carrier runs at 81% of their top speed
+  with no reaction delay; at 11 checkpoints the risk per second is
+  `BASE + RATE · Σ_defenders σ(k(MARGIN − (t_defender + DEF_DELAY − t_carrier)))`,
+  with defender times at the notebook's grid cells, and `P_keep = exp(−∫ risk dt)`.
+  `G_carry = P_keep · V_context − (1 − P_keep) · V_opponent(where it is lost) − V_ball`.
+  Carries further than the longest real carries (6.4 s) are out of reach. The
+  **Carry (P_keep)** map shows it; grey means out of reach or nobody on the ball.
+  The player on the ball is whoever SkillCorner's player-possession events put on
+  the ball at that frame, otherwise the attacker within 1.5 m of the ball, otherwise
+  nobody (no carries, e.g. while a pass is in flight). The tracking's own possession
+  tag is not used: it names the event's carrier in only about half the frames of a
+  possession. Pass recommendations and the receiver-specific pass value stay passes.
 - Pass value: the best receiver-specific net EPV gain at each cell, including the
   additional on-time arrival gate used by the receiving halos. This is an extension
   of the notebook, not a separately calibrated probability. The raster evaluates
@@ -34,7 +50,11 @@ The equations and saved fits come from `defensive_shape_integrity.ipynb` on main
 - Defensive Tiling: outfield defenders only; tile strength is mean defensive
   control, links use weakest defensive control, and links over 30 m are omitted.
   Stretched triangles are marked separately. Current integrity is the notebook's
-  location-value-weighted protection beyond `ball_x - 5 m`, not the old tile score.
+  location-value-weighted protection beyond `ball_x - 5 m`, not the old tile score:
+  `Σ V_location · (1 − max(P_success, P_keep)) / Σ V_location`, counting passes and
+  carries as the notebook's v3 does. Counting carries lowers integrity wherever a
+  player has the ball (on Perth's goal, at Williams's pass, the notebook goes from 0.861
+  passes only to 0.773).
 
 Maps use a one-metre grid covering the actual pitch. The fitted location-value
 table retains the notebook's standard-pitch coordinates and nearest-cell lookup.
@@ -85,7 +105,9 @@ The JSON result includes the objective value and every defender's coordinates
 for the maximum and minimum found, plus the number of formations scored.
 
 Example input with three defenders and a goalkeeper restricted to a box.
-Metric is `Integrity`, `FreeDanger`, `Danger` (shown as Threat in the viewer) or `EPV`.
+Metric is `Integrity`, `FreeDanger` (shown as Danger in the viewer), `Threat` or `EPV`.
+`Danger`, the old name of `Threat`, still works. `carrier` (optional) is the index of
+the attacker on the ball; without it the attacker within 1.5 m of the ball carries.
 With no `defenders` list the search places 11 interchangeable defenders.
 
 ```json
@@ -93,6 +115,7 @@ With no `defenders` list the search places 11 interchangeable defenders.
   "metric": "Integrity",
   "attackers": [{"x": 17, "y": 2}, {"x": 29, "y": -12}, {"x": 34, "y": 10}],
   "ball": {"x": 17, "y": 2},
+  "carrier": 0,
   "defenders": [
     {"id": "GK", "bounds": {"minX": 42, "minY": -9, "maxY": 9}},
     {"id": "CB1"}, {"id": "CB2"}, {"id": "FB"}
@@ -111,22 +134,24 @@ The search enforces pitch limits, optional per-defender rectangular `bounds`,
 and `minSpacing` between defenders (default 0.75 m).
 
 - **Integrity** is the viewer's location-value-weighted probability of denying
-  a pass to cells at or ahead of the ball minus 5 m. Higher favors the defense.
+  a pass or a carry to cells at or ahead of the ball minus 5 m. Higher favors the defense.
 - **FreeDanger** (shown as **Danger** in the viewer) is the notebook's extended danger
   score above: the two most dangerous free attackers, 3 s ahead. It is the only metric
   that uses attacker velocities: give each attacker `vx` and `vy` (m/s; default 0).
   Mark goalkeepers with `"gk": true` on the attacker or defender so they are left
   out, as in the notebook. Lower favors the defense.
-- **Danger** (shown as **Threat** in the viewer) is the highest modeled net EPV gain
-  available to the attack at any destination on the pitch: the notebook's "threat
-  available", which Section 8d found carries no danger signal. Lower favors the defense.
+- **Threat** (formerly `Danger`) is the highest modeled net EPV gain available to the
+  attack at any destination on the pitch, by a pass or a carry: the notebook's v3
+  "threat available", which Section 8d found carries no danger signal. Lower favors
+  the defense.
 - **EPV** is the fitted context-adjusted value at the current ball position.
   Lower favors the defense.
 
-The optimizer uses the fitted arrival-time, interception, and value models.
+The optimizer uses the fitted arrival-time, interception, value and carry models.
+Without `carryModel` in the fitted data, Integrity and Threat count passes only.
 It runs a seeded multi-start coordinate search for each objective direction,
 proposing defender moves at 12, 6, 3 and 1 m. Candidate formations for Integrity
-and Danger are explored on a subsampled grid and the final formations and
+and Threat are explored on a subsampled grid and the final formations and
 starting formations are compared using the viewer's one-metre grid. EPV and
 FreeDanger are evaluated directly. The results are approximate extrema. Increase `restarts`
 (default 3) or decrease `searchGridStep` (default 5) for a more expensive search.
@@ -140,7 +165,8 @@ The pitch shows the tracked attack and ball, then adds the optimized defense
 as gold rings. The goalkeeper appears at their tracked position after the search
 and stays fixed while the outfield defenders are optimized. The view
 maximizes Integrity and minimizes Danger (free attackers, 3 s), Threat (best pass
-gain) or the attacking team's EPV at the ball. For Danger, the attackers' velocities
+or carry gain) or the attacking team's EPV at the ball. The player on the ball comes
+from the match's possession events. For Danger, the attackers' velocities
 come from the tracked frames 0.2 s either side; the other metrics score a static picture.
 Changing the frame or metric
 clears the result. The browser worker uses the selected frame's tracked

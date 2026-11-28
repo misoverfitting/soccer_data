@@ -5,11 +5,12 @@ import {parseCsv} from './csv.mjs';
 const median=a=>{a=a.filter(Number.isFinite).sort((x,y)=>x-y);return a.length?(a[Math.floor((a.length-1)/2)]+a[Math.floor(a.length/2)])/2:null;};
 const mean=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
 export async function passingData(root,id,meta){
- const [settingsText,physicalText,eventText,valueText]=await Promise.all([
+ const [settingsText,physicalText,eventText,valueText,carryText]=await Promise.all([
   readFile(path.join(root,'notebooks/fitted/pitch_control_settings.json'),'utf8'),
   readFile(path.join(root,'data/aggregates/aus1league_physicalaggregates_20242025.csv'),'utf8'),
   readFile(path.join(root,`data/matches/${id}/${id}_dynamic_events.csv`),'utf8'),
-  readFile(path.join(root,'notebooks/fitted/value_model.json'),'utf8')]);
+  readFile(path.join(root,'notebooks/fitted/value_model.json'),'utf8'),
+  readFile(path.join(root,'notebooks/fitted/carry_model.json'),'utf8')]);
  const rows=parseCsv(physicalText),fields=['psv99','timetosprint_top3'];
  const byId=new Map();
  for(const r of rows){if(!byId.has(+r.player_id))byId.set(+r.player_id,[]);byId.get(+r.player_id).push(r);}
@@ -24,5 +25,10 @@ export async function passingData(root,id,meta){
  const possessions=events.filter(r=>r.event_type==='player_possession').sort((a,b)=>+a.frame_start-+b.frame_start);
  const options=events.filter(r=>r.event_type==='passing_option'&&(r.passing_option_at_pass_moment==='True'||r.targeted==='True')).map(r=>({possession:r.associated_player_possession_event_id,player_id:+r.player_id,name:r.player_name,targeted:r.targeted==='True',run:r.associated_off_ball_run_event_id}));
  const passes=possessions.flatMap((r,i)=>r.end_type==='pass'?[{id:r.event_id,release:+r.frame_end,complete:+(possessions[i+1]?.frame_start??r.frame_end),period:+r.period,team:+r.team_id,carrier:+r.player_id,side:r.attacking_side,outcome:r.pass_outcome}]:[]);
- return {settings:JSON.parse(settingsText).settings,valueModel:JSON.parse(valueText),physical,runs,options,passes};
+ // Carries (notebook Section 4c): the fitted survival model, and who is on the ball when (SkillCorner's player
+ // possessions; the tracking's own possession tag lags the ball, so it is not used to find the carrier).
+ const fit=JSON.parse(carryText);
+ const carryModel={hazard:fit.hazard,carry_speed:fit.carry_speed,def_delay:fit.def_delay,fracs:fit.fracs,max_duration_s:fit.max_duration_s,ball_dist_m:1.5};
+ const onBall=possessions.map(r=>({player_id:+r.player_id,team:+r.team_id,start:+r.frame_start,end:+r.frame_end,period:+r.period}));
+ return {settings:JSON.parse(settingsText).settings,valueModel:JSON.parse(valueText),carryModel,onBall,physical,runs,options,passes};
 }

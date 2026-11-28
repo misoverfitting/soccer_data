@@ -21,5 +21,6 @@ test('Docker image packages the resources needed by the receiving model',async()
   const model=await passingData(image,1886347,meta);
   assert.ok(model.settings.RUN_CREDIT>0);assert.ok(model.valueModel.V_loc.length);assert.ok(model.runs.length);
   assert.ok(Object.values(model.physical).every(p=>p.vmax>0&&p.amax>0));
+  assert.ok(model.carryModel.hazard.RATE>0&&model.carryModel.fracs.length===11);assert.ok(model.onBall.length&&model.onBall.every(r=>r.start<=r.end));
  }finally{await rm(image,{recursive:true,force:true});}
 });

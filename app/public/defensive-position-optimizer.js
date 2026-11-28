@@ -29,9 +29,14 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     pitchLength = 105, pitchWidth = 68, attackDirection = 'right',
     seed = 1, restarts = 3, searchGridStep = Math.min(5, Math.floor(pitchLength), Math.floor(pitchWidth)), minSpacing = 0.75,
   } = scene;
-  const objective = String(metric).toLowerCase();
-  if (!['integrity', 'danger', 'freedanger', 'epv'].includes(objective)) {
-    throw new Error('Metric must be Integrity, Danger, FreeDanger, or EPV');
+  // 'danger' is the old id of Threat, kept so saved scenes and scripts still work
+  const objective = { danger: 'threat' }[String(metric).toLowerCase()] ?? String(metric).toLowerCase();
+  if (!['integrity', 'threat', 'freedanger', 'epv'].includes(objective)) {
+    throw new Error('Metric must be Integrity, Threat, FreeDanger, or EPV');
+  }
+  const { carrier } = scene;
+  if (carrier != null && !(Number.isInteger(carrier) && carrier >= 0 && carrier < (attackers?.length ?? 0))) {
+    throw new Error('carrier must be the index of an attacker');
   }
   if (!['right', 'left'].includes(attackDirection)
       || ![pitchLength, pitchWidth].every(n => Number.isFinite(n) && n >= 1 && n <= 150)
@@ -85,7 +90,9 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     players: players.map((p, id) => ({ id, team_id: id < attackers.length ? 0 : 1,
       ...(p.gk ? { player_role: { name: 'Goalkeeper' } } : {}) })),
   };
-  const data = { ...fitted, physical };
+  // Carries: `carrier` (an index into attackers) is the player on the ball; without it the attacker within 1.5 m
+  // of the ball carries, as in the notebook. Without fitted.carryModel the metrics count passes only.
+  const data = { ...fitted, physical, onBall: carrier == null ? [] : [{ player_id: carrier, team: 0, start: 0, end: 4, period: 1 }] };
   const frame = {
     frame: 2, period: 1, ball_data: ball, possession: { group: 'home team' },
     player_data: attackers.map(({ x, y }, player_id) => ({ x, y, player_id })),
@@ -106,7 +113,7 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     if (model.reason) throw new Error(model.reason);
     if (objective === 'epv') return model.ballValue;
     if (objective === 'freedanger') return model.freeDanger().danger;
-    if (objective === 'danger') {
+    if (objective === 'threat') {
       let peak = -Infinity;
       for (const q of points) peak = Math.max(peak, model.evaluate(q).gain);
       return peak;
@@ -116,7 +123,7 @@ export function optimizeDefense(scene, fitted, { direction = 'both' } = {}) {
     for (const q of points) {
       if (q.x * flip < ball.x * flip - 5) continue;
       const weight = model.location(q);
-      denied += weight * (1 - model.evaluate(q).success);
+      denied += weight * (1 - model.evaluate(q).reach);   // passes and carries, as in the viewer
       total += weight;
     }
     if (!(total > 0)) throw new Error('No positive location value on the integrity grid');

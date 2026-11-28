@@ -8,7 +8,7 @@ function trackedPositions(frame) {
     .map(player => [player.player_id, player]));
 }
 
-export function clipSamples(frames, meta, physical) {
+export function clipSamples(frames, meta, physical, onBall = []) {
   const samples = [];
   const start = frames[0].frame;
   const framesByNumber = new Map(frames.map(frame => [frame.frame, frame]));
@@ -16,7 +16,7 @@ export function clipSamples(frames, meta, physical) {
     const second = Math.floor((frame.frame - start) / framesPerSecond);
     if (second < samples.length) continue;
     while (samples.length < second) samples.push({ second: samples.length });
-    const { scene, team, keeper } = optimizerSnapshot(frames, index, meta, physical);
+    const { scene, team, keeper } = optimizerSnapshot(frames, index, meta, physical, onBall);
     const priorFrame = framesByNumber.get(frame.frame - framesPerSecond);
     samples.push({
       second, frame: frame.frame, period: frame.period, scene, team, keeper,
@@ -59,14 +59,14 @@ function reachablePositions(origin, previous, { vmax = 8, amax = 5 }, { pitchLen
   });
 }
 
-export function plausibleSamples(frames, meta, physical) {
+export function plausibleSamples(frames, meta, physical, onBall = []) {
   const indices = new Map(frames.map((frame, index) => [frame.frame, index]));
-  return clipSamples(frames, meta, physical).map(sample => {
+  return clipSamples(frames, meta, physical, onBall).map(sample => {
     const { frame, period, team, scene, tracked } = sample;
     const index = indices.get(frame);
     const futureIndex = indices.get(frame + framesPerSecond);
     if (!scene || futureIndex == null || frames[futureIndex].period !== period) return { index };
-    const future = optimizerSnapshot(frames, futureIndex, meta, physical);
+    const future = optimizerSnapshot(frames, futureIndex, meta, physical, onBall);
     if (!future.scene || future.team !== team || future.keeper.id !== sample.keeper.id) return { index };
     const priorFrame = frames[indices.get(frame - 2)];
     const prior = priorFrame?.period === period ? trackedPositions(priorFrame) : null;

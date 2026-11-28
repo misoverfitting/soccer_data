@@ -1,7 +1,7 @@
 import { optimizeDefense } from './defensive-position-optimizer.js';
 
 function solve(scene, fitted) {
-  const direction = scene.metric === 'integrity' ? 'maximum' : 'minimum';
+  const direction = String(scene.metric).toLowerCase() === 'integrity' ? 'maximum' : 'minimum';
   return optimizeDefense(scene, fitted, { direction })[direction];
 }
 

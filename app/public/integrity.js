@@ -45,6 +45,54 @@ export function buildIntegrity(frame,before,after,meta,data){
   return location(q)*Math.exp(vm.intercept+Object.values(vm.coef).reduce((sum,b,i)=>sum+b*f[i],0));
  }
  const ballValue=context(ball),eff=(t,tb)=>Math.max(t,tb)+s.TIE_BREAK*t;
+ // ---- Carries (notebook Section 4c, carry_options; same steps as the model viewer's v3) ----
+ // The player on the ball: whoever SkillCorner's player-possession events put on the ball at this frame, otherwise
+ // the attacker within 1.5 m of the ball, otherwise nobody (no carries, e.g. while a pass is in flight).
+ const cm=data.carryModel??null;
+ const carrier=(()=>{
+  if(!cm)return null;
+  const held=(data.onBall??[]).find(r=>r.period===frame.period&&r.start<=frame.frame&&frame.frame<=r.end&&r.team===team);
+  const holder=held&&attackers.find(p=>p.player_id===held.player_id);
+  if(holder)return holder;
+  let best=null,bestDistance=cm.ball_dist_m;
+  for(const p of attackers){const d=distance(p,ball);if(d<=bestDistance){bestDistance=d;best=p;}}
+  return best;
+ })();
+ const NX=vm.V_loc[0].length,NY=vm.V_loc.length;
+ const cellIndex=q=>clamp(roundEven(q.y*flip-vm.grid_y0),0,NY-1)*NX+clamp(roundEven(q.x*flip-vm.grid_x0),0,NX-1);
+ const defenderTimes=new Map();   // each defender's arrival time at a notebook grid cell, computed once per cell
+ function cellTimes(c){
+  let t=defenderTimes.get(c);
+  if(!t){const q={x:(vm.grid_x0+c%NX)*flip,y:(vm.grid_y0+Math.floor(c/NX))*flip};t=defenders.map(p=>arrival(p,q));defenderTimes.set(c,t);}
+  return t;
+ }
+ const carryRun=carrier&&(()=>{
+  const vmax=carrier.vmax*cm.carry_speed,amax=carrier.amax*s.ACC_SCALE,dAcc=vmax*vmax/(2*amax);
+  const speed=Math.hypot(carrier.vx,carrier.vy),fx=speed>1.5?carrier.vx/(speed+1e-9):0,fy=speed>1.5?carrier.vy/(speed+1e-9):0;   // as in the fit: no facing when standing
+  return q=>{   // the carrier's time to q: no reaction delay, slower with the ball, plus the turn
+   const dx=q.x-carrier.x,dy=q.y-carrier.y,d=Math.hypot(dx,dy);
+   let t=d<dAcc?Math.sqrt(2*d/amax):vmax/amax+(d-dAcc)/vmax;
+   if(d>1)t+=Math.acos(clamp((dx*fx+dy*fy)/(d+1e-9),-1,1))/s.OMEGA;
+   return t;
+  };
+ })();
+ // P_keep for a straight carry to q, and its gain: P_keep·V − (1 − P_keep)·V_opp(where it is lost) − V(ball).
+ // The risk per second is BASE + RATE·Σ_defenders σ(k·(MARGIN − (t_defender + DEF_DELAY − t_carrier))) at 11 checkpoints.
+ // Returns null with nobody on the ball, and keep 0 / gain −∞ beyond the longest real carries.
+ function carryAt(q,value){
+  if(!carryRun)return null;
+  const H=cm.hazard,kH=Math.PI/(Math.sqrt(3)*H.SIGMA),F=cm.fracs,J=F.length;
+  const point=f=>({x:carrier.x+f*(q.x-carrier.x),y:carrier.y+f*(q.y-carrier.y)});
+  const tc=F.map(f=>carryRun(point(f)));
+  if(tc[J-1]>cm.max_duration_s)return {keep:0,gain:-Infinity,reachable:false};
+  const lambda=F.map((f,j)=>H.BASE+H.RATE*cellTimes(cellIndex(point(f))).reduce((sum,t)=>sum+sigmoid(kH*(H.MARGIN-(t+cm.def_delay-tc[j]))),0));
+  const seg=[0];let hazard=0;
+  for(let j=1;j<J;j++){seg[j]=.5*(lambda[j]+lambda[j-1])*Math.max(0,tc[j]-tc[j-1]);hazard+=seg[j];}
+  let lost=0;
+  for(let j=1;j<J;j++){const m=point(.5*(F[j]+F[j-1]));lost+=seg[j]/(hazard+1e-12)*location({x:-m.x,y:-m.y});}
+  const keep=Math.exp(-hazard);
+  return {keep,gain:keep*value-(1-keep)*lost-ballValue,reachable:true};
+ }
  function evaluate(q,receiver=null,receiverTime=null){
   const times=new Map(players.map(p=>[p.player_id,arrival(p,q)]));
   if(receiver&&receiverTime!=null){const raw=times.get(receiver.player_id);times.set(receiver.player_id,Math.min(raw,receiverTime+(1-s.RUN_CREDIT)*Math.max(0,raw-receiverTime)));}
@@ -55,7 +103,11 @@ export function buildIntegrity(frame,before,after,meta,data){
   const ground=(1-interception)*control,tl=d/s.V_LOFT+s.T_HANG;
   const loft=d>15?s.LOFT_CONTROL*sigmoid(k*(eff(td,tl)-eff(ta,tl))):0;
   const success=Math.max(ground,loft),value=context(q,times),opponentValue=location({x:-q.x,y:-q.y});
-  return {control,success,value,td,interception,gain:success*value-(1-success)*opponentValue-ballValue,receiverSuccess:receiver?base.at(receiver,q):null};
+  const gainPass=success*value-(1-success)*opponentValue-ballValue;
+  // A spot evaluated for a named receiver is a pass to them; otherwise the ball can also be carried there (v3).
+  const carry=receiver?null:carryAt(q,value),keep=carry?carry.keep:0,gainCarry=carry?carry.gain:-Infinity;
+  return {control,success,value,td,interception,gainPass,keep,gainCarry,carryReachable:Boolean(carry?.reachable),
+   gain:Math.max(gainPass,gainCarry),reach:Math.max(success,keep),receiverSuccess:receiver?base.at(receiver,q):null};
  }
  // Context value of the notebook grid cell containing q (the notebook reads v_ctx from its grid with grid_index).
  function cellValue(q){
@@ -110,7 +162,8 @@ export function buildIntegrity(frame,before,after,meta,data){
    let receiverGain=-Infinity;
    for(const p of base.receivers){const ps=base.at(p,q,{td:v.td,intercept:v.interception});receiverGain=Math.max(receiverGain,ps*v.value-(1-ps)*location({x:-q.x,y:-q.y})-ballValue);}
    cells.push({...q,...v,passValue:receiverGain});threat=Math.max(threat,v.gain);
-   if(q.x*flip>=ball.x*flip-5){const w=location(q);deny+=w*(1-v.success);weight+=w;}
+   // integrity counts passes and carries (v3): I = Σ V·(1 − max(P_succ, P_keep)) / Σ V
+   if(q.x*flip>=ball.x*flip-5){const w=location(q);deny+=w*(1-v.reach);weight+=w;}
   }
   cachedGrid={width,height,cells,integrity:weight?deny/weight:null,threat};return cachedGrid;
  }
@@ -136,7 +189,7 @@ export function buildIntegrity(frame,before,after,meta,data){
   const orientation=d.length?d.reduce((sum,p)=>sum+(1+((ball.x-p.x)*p.fx+(ball.y-p.y)*p.fy)/(distance(ball,p)*Math.hypot(p.fx,p.fy)+1e-9))/2,0)/d.length:null;
   return {tiles,links,marks,marking,nearestMarking,individual,orientation,free:free?roster.get(free.attacker.player_id)?.short_name:null,oldIntegrity:aSum?core.reduce((s,t)=>s+t.strength*t.area,0)/aSum:null,...g};
  }
- return {...base,flip,ballValue,location,context,evaluate,freeDanger,projectedOption,recommendations,grid,diagnostics};
+ return {...base,flip,ballValue,location,context,evaluate,freeDanger,carrier,projectedOption,recommendations,grid,diagnostics};
 }
 
 export function integrityColour(value,kind='control'){

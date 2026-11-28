@@ -1,6 +1,7 @@
 import { possessionSource } from './possession.js';
 
-export function optimizerSnapshot(frames, index, meta, physical) {
+// onBall: SkillCorner's player possessions ({player_id, team, start, end, period}), to name the player on the ball.
+export function optimizerSnapshot(frames, index, meta, physical, onBall = []) {
   const frame = frames[index];
   const source = possessionSource(frames, index);
   const possession = frames[source.index]?.possession;
@@ -39,6 +40,8 @@ export function optimizerSnapshot(frames, index, meta, physical) {
     return dt > 0 ? { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt } : { vx: 0, vy: 0 };
   };
   const isKeeper = id => roster.get(id).player_role?.name === 'Goalkeeper';
+  const held = onBall.find(r => r.period === frame.period && r.start <= frame.frame && frame.frame <= r.end && r.team === team);
+  const carrier = held ? attack.findIndex(p => p.player_id === held.player_id) : -1;
   // Include the tracked formation as a starting point if it satisfies the same constraints as the search.
   const positions = defenders.map(id => tracked.get(id));
   const usableStart = positions.every((p, i) => onPitch(p)
@@ -50,6 +53,7 @@ export function optimizerSnapshot(frames, index, meta, physical) {
       attackers: attack.map(p => ({ x: p.x, y: p.y, ...velocity(p), ...physical?.[p.player_id],
         ...(isKeeper(p.player_id) ? { gk: true } : {}) })),
       ball: { x: ball.x, y: ball.y },
+      ...(carrier >= 0 ? { carrier } : {}),
       defenders: profiles.map((p, i) => usableStart ? { ...p, x: positions[i].x, y: positions[i].y } : p),
     },
   };

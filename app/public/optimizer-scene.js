@@ -28,7 +28,17 @@ export function optimizerSnapshot(frames, index, meta, physical) {
   if (!onPitch(ball) || !attack.length || !attack.every(onPitch)) {
     return { team, reason: 'On-pitch ball and attacker positions are required.' };
   }
-  const profiles = defenders.map(id => ({ id, ...physical?.[id], ...(id === keeperId ? { bounds: keeperBounds } : {}) }));
+  const profiles = defenders.map(id => ({ id, ...physical?.[id], ...(id === keeperId ? { gk: true, bounds: keeperBounds } : {}) }));
+  // attacker velocities from the tracked frames 0.2 s either side (as the viewer model does), for free-attacker danger
+  const near = offset => frames[index + offset]?.period === frame.period
+    && Math.abs(frames[index + offset].frame - frame.frame) <= 2 ? frames[index + offset] : frame;
+  const lo = near(-2), hi = near(2), dt = (hi.frame - lo.frame) / 10;
+  const at = (f, id) => (f.player_data ?? []).find(p => p.player_id === id);
+  const velocity = p => {
+    const a = at(lo, p.player_id) ?? p, b = at(hi, p.player_id) ?? p;
+    return dt > 0 ? { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt } : { vx: 0, vy: 0 };
+  };
+  const isKeeper = id => roster.get(id).player_role?.name === 'Goalkeeper';
   // Include the tracked formation as a starting point if it satisfies the same constraints as the search.
   const positions = defenders.map(id => tracked.get(id));
   const usableStart = positions.every((p, i) => onPitch(p)
@@ -37,7 +47,8 @@ export function optimizerSnapshot(frames, index, meta, physical) {
     team, keeper: { id: keeperId, x: keeper.x, y: keeper.y },
     scene: {
       pitchLength, pitchWidth, attackDirection: right ? 'right' : 'left',
-      attackers: attack.map(({ x, y, player_id }) => ({ x, y, ...physical?.[player_id] })),
+      attackers: attack.map(p => ({ x: p.x, y: p.y, ...velocity(p), ...physical?.[p.player_id],
+        ...(isKeeper(p.player_id) ? { gk: true } : {}) })),
       ball: { x: ball.x, y: ball.y },
       defenders: profiles.map((p, i) => usableStart ? { ...p, x: positions[i].x, y: positions[i].y } : p),
     },

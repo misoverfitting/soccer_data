@@ -5,9 +5,9 @@ Integrity. The app opens in Optimizer. The Defensive Integrity toggle shows the 
 legend as a tooltip only while selected. Both views use the same clips and playback controls. Integrity defaults to
 pitch control, players and ball, with tiles, links, facing and halos off. Mesh
 settings offers four maps plus optional defender links, tiles, marking assignments
-and facing indicators. The diagnostic panel reports current protection, threat,
-assignment and nearest-attacker marking, free attacker, orientation, legacy tile
-integrity, broken links and stretched tiles.
+and facing indicators. The diagnostic panel reports current protection, danger,
+threat, assignment and nearest-attacker marking, free attacker, orientation, legacy
+tile integrity, broken links and stretched tiles.
 
 The equations and saved fits come from `defensive_shape_integrity.ipynb` on main:
 
@@ -21,6 +21,16 @@ The equations and saved fits come from `defensive_shape_integrity.ipynb` on main
   of the notebook, not a separately calibrated probability. The raster evaluates
   current movement and active off-ball runs, the fitted run credit, ball flight,
   interception at eight checkpoints, and ground/lofted alternatives.
+- Danger: the notebook's extended score (Section 8f, `danger_ext` → `free_top2_3s`),
+  the two most dangerous attackers the defence has left free, 3 s ahead. Each
+  outfield attacker except the one nearest the ball is projected 3 s along their
+  velocity; outfield defenders are assigned one attacker each (minimum total
+  arrival time); an attacker is covered if their defender arrives within the ball's
+  travel time + 1 s, halved if not goal-side. Danger is the sum of the two largest
+  `V_context × (1 − covered)`. `freeDanger({ahead: 1, top: 1})` gives Section 8d's
+  original score. On held-out matches the extended score tracks peak EPV over the
+  next four actions at ρ 0.141 (8d: 0.106); on Perth's goal it reads
+  0.227 → 0.256 → 0.235 → 0.184, as in the notebook.
 - Defensive Tiling: outfield defenders only; tile strength is mean defensive
   control, links use weakest defensive control, and links over 30 m are omitted.
   Stretched triangles are marked separately. Current integrity is the notebook's
@@ -75,6 +85,7 @@ The JSON result includes the objective value and every defender's coordinates
 for the maximum and minimum found, plus the number of formations scored.
 
 Example input with three defenders and a goalkeeper restricted to a box.
+Metric is `Integrity`, `FreeDanger`, `Danger` (shown as Threat in the viewer) or `EPV`.
 With no `defenders` list the search places 11 interchangeable defenders.
 
 ```json
@@ -101,8 +112,14 @@ and `minSpacing` between defenders (default 0.75 m).
 
 - **Integrity** is the viewer's location-value-weighted probability of denying
   a pass to cells at or ahead of the ball minus 5 m. Higher favors the defense.
-- **Danger** is the highest modeled net EPV gain available to the attack at any
-  destination on the pitch. Lower favors the defense.
+- **FreeDanger** (shown as **Danger** in the viewer) is the notebook's extended danger
+  score above: the two most dangerous free attackers, 3 s ahead. It is the only metric
+  that uses attacker velocities: give each attacker `vx` and `vy` (m/s; default 0).
+  Mark goalkeepers with `"gk": true` on the attacker or defender so they are left
+  out, as in the notebook. Lower favors the defense.
+- **Danger** (shown as **Threat** in the viewer) is the highest modeled net EPV gain
+  available to the attack at any destination on the pitch: the notebook's "threat
+  available", which Section 8d found carries no danger signal. Lower favors the defense.
 - **EPV** is the fitted context-adjusted value at the current ball position.
   Lower favors the defense.
 
@@ -110,8 +127,8 @@ The optimizer uses the fitted arrival-time, interception, and value models.
 It runs a seeded multi-start coordinate search for each objective direction,
 proposing defender moves at 12, 6, 3 and 1 m. Candidate formations for Integrity
 and Danger are explored on a subsampled grid and the final formations and
-starting formations are compared using the viewer's one-metre grid. EPV is
-evaluated directly. The results are approximate extrema. Increase `restarts`
+starting formations are compared using the viewer's one-metre grid. EPV and
+FreeDanger are evaluated directly. The results are approximate extrema. Increase `restarts`
 (default 3) or decrease `searchGridStep` (default 5) for a more expensive search.
 Set `seed` for reproducibility. Bounds can encode role zones or a movement
 envelope around a tracked shape. With only pitch bounds and spacing, extreme
@@ -122,7 +139,9 @@ under **Settings**. Pause or scrub to a frame and click **Find Optimum**.
 The pitch shows the tracked attack and ball, then adds the optimized defense
 as gold rings. The goalkeeper appears at their tracked position after the search
 and stays fixed while the outfield defenders are optimized. The view
-maximizes Integrity and minimizes Danger or the attacking team's EPV at the ball.
+maximizes Integrity and minimizes Danger (free attackers, 3 s), Threat (best pass
+gain) or the attacking team's EPV at the ball. For Danger, the attackers' velocities
+come from the tracked frames 0.2 s either side; the other metrics score a static picture.
 Changing the frame or metric
 clears the result. The browser worker uses the selected frame's tracked
 players and the match's fitted physical profiles when available.

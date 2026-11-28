@@ -73,8 +73,9 @@ function renderIntegrity(f,px,L,W,scale,poly){
  }
  if($('integrityFacing').checked)for(const p of model.players){const norm=Math.hypot(p.fx,p.fy)||1;ctx.beginPath();ctx.moveTo(...px(p.x,p.y));ctx.lineTo(...px(p.x+p.fx/norm*2.5,p.y+p.fy/norm*2.5));ctx.strokeStyle='#ffe5a3';ctx.lineWidth=2;ctx.setLineDash([]);ctx.stroke();}
  ctx.setLineDash([]);
- const n=v=>v==null?'—':v.toFixed(3);
- $('inspect').textContent=`Integrity (value-weighted protection): ${n(g.integrity)} · Threat available: ${n(g.threat)} · Assignment marking: ${n(diagnostic.marking)} · Nearest-attacker marking: ${n(diagnostic.nearestMarking)} · Most dangerous free attacker: ${diagnostic.free??'—'} · Orientation: ${n(diagnostic.orientation)} · Old tile integrity: ${n(diagnostic.oldIntegrity)} · Broken links: ${diagnostic.links.filter(l=>l.strength<.5).length}/${diagnostic.links.length} · Stretched tiles: ${diagnostic.tiles.filter(t=>t.stretched).length}`;
+ const n=v=>v==null||!Number.isFinite(v)?'—':v.toFixed(3);
+ const free=model.freeDanger(),freeNames=free.who.map(m=>meta.players.find(p=>p.id===m.attacker.player_id)?.short_name??String(m.attacker.player_id)).join(' + ');
+ $('inspect').textContent=`Integrity (value-weighted protection): ${n(g.integrity)} · Danger (top two free attackers, 3 s ahead): ${n(free.danger)}${freeNames?' · '+freeNames:''} · Threat available: ${n(g.threat)} · Assignment marking: ${n(diagnostic.marking)} · Nearest-attacker marking: ${n(diagnostic.nearestMarking)} · Most dangerous free attacker: ${diagnostic.free??'—'} · Orientation: ${n(diagnostic.orientation)} · Old tile integrity: ${n(diagnostic.oldIntegrity)} · Broken links: ${diagnostic.links.filter(l=>l.strength<.5).length}/${diagnostic.links.length} · Stretched tiles: ${diagnostic.tiles.filter(t=>t.stretched).length}`;
  $('fillLegend').textContent=kind==='control'?'Pitch control: blue defence · neutral 50% · red attack':kind==='tiles'?'Defensive tiles / links: red weak · green strong':kind==='pass'?'Receiver-specific pass value: blue EPV loss · red EPV gain':$('legacyDanger').checked?'Legacy potential danger · original spatial EPV proxy':'Notebook potential danger · net EPV gain after interception and turnover risk';
 }
 
@@ -207,7 +208,7 @@ function drawSoccerBall(x,y,tint,detected){
 let optimizerState = null;
 let clipOptimizer = null;
 let plausibleHold = null, plausibleTime = 0;
-const optimizerLabels = { integrity:'Integrity', danger:'Danger', epv:'EPV' };
+const optimizerLabels = { integrity:'Integrity', freedanger:'Danger', danger:'Threat', epv:'EPV' };
 
 function clearClipOptimizer() {
  clipOptimizer?.worker?.terminate();

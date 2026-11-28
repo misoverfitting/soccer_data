@@ -21,6 +21,11 @@ export function assignment(cost){
  return p.flatMap((row,col)=>row>0&&row<=rows&&col>0&&col<=cols?[[row-1,col-1]]:[]);
 }
 
+// Danger, extended (defensive_shape_integrity.ipynb Section 8f, danger_ext → free_top2_3s): the two most dangerous
+// attackers the defence has left free, 3 s ahead. Section 8d's original score is {ahead:1, top:1}.
+export const FREE_DANGER={ahead:3,top:2};
+const HALF_L=52.5,HALF_W=34;   // the notebook's standard grid, used for every match
+
 export function buildIntegrity(frame,before,after,meta,data){
  const base=buildPassing(frame,before,after,meta,data);if(base.reason)return base;
  const vm=data.valueModel;if(!vm)return {...base,reason:'Fitted value model unavailable'};
@@ -51,6 +56,32 @@ export function buildIntegrity(frame,before,after,meta,data){
   const loft=d>15?s.LOFT_CONTROL*sigmoid(k*(eff(td,tl)-eff(ta,tl))):0;
   const success=Math.max(ground,loft),value=context(q,times),opponentValue=location({x:-q.x,y:-q.y});
   return {control,success,value,td,interception,gain:success*value-(1-success)*opponentValue-ballValue,receiverSuccess:receiver?base.at(receiver,q):null};
+ }
+ // Context value of the notebook grid cell containing q (the notebook reads v_ctx from its grid with grid_index).
+ function cellValue(q){
+  const ix=clamp(roundEven(q.x*flip-vm.grid_x0),0,vm.V_loc[0].length-1),iy=clamp(roundEven(q.y*flip-vm.grid_y0),0,vm.V_loc.length-1);
+  return context({x:(vm.grid_x0+ix)*flip,y:(vm.grid_y0+iy)*flip});
+ }
+ // Free-attacker danger: each outfield attacker except the one nearest the ball is projected `ahead` seconds
+ // (position + velocity); outfield defenders are assigned one attacker each (minimum total arrival time); an attacker
+ // is covered if their defender arrives within ball travel + 1 s, halved if not goal-side. Share = V_ctx × (1 − covered);
+ // danger = the sum of the `top` largest shares. Returns {danger, who (most dangerous first), list}.
+ function freeDanger({ahead=FREE_DANGER.ahead,top=FREE_DANGER.top}={}){
+  const keeper=p=>roster.get(p.player_id)?.player_role?.name==='Goalkeeper';
+  const atts=attackers.filter(p=>!keeper(p)),defs=defenders.filter(p=>!keeper(p));
+  if(!atts.length)return {danger:NaN,who:[],list:[]};
+  const near=atts.reduce((a,b)=>distance(b,ball)<distance(a,ball)?b:a),targets=atts.filter(p=>p!==near);
+  const pts=targets.map(p=>({x:clamp(p.x+ahead*p.vx,-HALF_L+.5,HALF_L-.5),y:clamp(p.y+ahead*p.vy,-HALF_W+.5,HALF_W-.5)}));
+  const times=defs.map(d=>pts.map(q=>arrival(d,q))),defOf=new Map();
+  if(defs.length&&pts.length)for(const [d,a] of assignment(times))defOf.set(a,d);
+  const list=targets.map((p,a)=>{
+   const q=pts[a],d=defOf.get(a);let covered=0;
+   if(d!=null){const def=defs[d],goalSide=(goal.x-q.x)*(def.x-q.x)+(goal.y-q.y)*(def.y-q.y)>0;
+    covered=sigmoid(k*(distance(q,ball)/s.V_BALL+1-times[d][a]))*(goalSide?1:.5);}
+   return {attacker:p,x:q.x,y:q.y,defender:d!=null?defs[d]:null,covered,share:cellValue(q)*(1-covered)};
+  });
+  const ranked=[...list].sort((a,b)=>b.share-a.share).slice(0,top);
+  return {danger:targets.length?ranked.reduce((sum,m)=>sum+m.share,0):NaN,who:ranked,list};
  }
  function projectedOption(p,opt=null){
   const run=opt?.run?data.runs.find(r=>r.id===opt.run&&r.end>frame.frame):null;
@@ -105,7 +136,7 @@ export function buildIntegrity(frame,before,after,meta,data){
   const orientation=d.length?d.reduce((sum,p)=>sum+(1+((ball.x-p.x)*p.fx+(ball.y-p.y)*p.fy)/(distance(ball,p)*Math.hypot(p.fx,p.fy)+1e-9))/2,0)/d.length:null;
   return {tiles,links,marks,marking,nearestMarking,individual,orientation,free:free?roster.get(free.attacker.player_id)?.short_name:null,oldIntegrity:aSum?core.reduce((s,t)=>s+t.strength*t.area,0)/aSum:null,...g};
  }
- return {...base,flip,ballValue,location,context,evaluate,projectedOption,recommendations,grid,diagnostics};
+ return {...base,flip,ballValue,location,context,evaluate,freeDanger,projectedOption,recommendations,grid,diagnostics};
 }
 
 export function integrityColour(value,kind='control'){

@@ -33,6 +33,19 @@ d8 = next(c.source for c in nb.cells if c.cell_type == "code" and "def free_atta
 exec(compile(d8.split("def collect_danger")[0], "8d", "exec"), g)
 who8 = next(c.source for c in nb.cells if c.cell_type == "code" and "def free_attacker_who" in c.source)
 exec(compile(who8.split("goal_frames[")[0], "8d-who", "exec"), g)
+# Section 8f's extended danger (danger_ext: free_top2_3s, the two most dangerous free attackers 3 s ahead)
+d8f = next(c.source for c in nb.cells if c.cell_type == "code" and "def danger_ext" in c.source)
+exec(compile(d8f.split("def collect_danger_ext")[0], "8f", "exec"), g)
+
+def danger_ext_who(st, ball, pc):
+    """Player ids of the two attackers behind danger_ext's free_top2_3s, most dangerous first (same steps as danger_ext)."""
+    att = st[st.attacking & ~st.gk].reset_index(drop=True)
+    tg = att.drop(index=int(np.argmin(np.linalg.norm(att[["x", "y"]].to_numpy() - ball, axis=1)))).reset_index(drop=True)
+    idx_def = np.where((~st.attacking) & (~st.gk))[0]
+    pts = g["_clip"](tg[["x", "y"]].to_numpy() + 3.0 * tg[["vx", "vy"]].to_numpy())
+    tb = np.linalg.norm(pts - ball, axis=1) / g["V_BALL"]
+    share = pc["v_ctx"].ravel()[g["grid_index"](pts)] * (1 - g["_cover"](st, idx_def, pc["facing"], pts, tb))
+    return [int(tg.player_id.iloc[k]) for k in np.argsort(-share, kind="stable")[:2]]
 
 FITTED, DEFAULT, VM, CARRY = dict(g["SETTINGS"]), dict(g["DEFAULT_SETTINGS"]), g["VALUE_MODEL"], g["CARRY"]
 
@@ -77,12 +90,15 @@ for frame in [44209, 44245, 44283, 12345]:
                       "v_ball": round(pc["v_ball"], 7), "integrity": round(integ, 7),
                       "danger": round(g["free_attacker_danger"](st, ball, pc)["free_ctx_1s"], 8),
                       "danger_who": int(st.player_id[st.name == g["free_attacker_who"](st, ball, pc)].iloc[0]),
+                      "danger_ext": round(g["danger_ext"](st, ball, pc)["free_top2_3s"], 8),
+                      "danger_ext_who": danger_ext_who(st, ball, pc),
                       "carrier_id": None if pc["carrier"] is None else int(st.player_id.iloc[pc["carrier"]])}
     cases.append(case)
     print(frame, row.player_name, "| carrier", case["v3"]["carrier_id"], "| v3 max gain", round(max(case["v3"]["gain"]), 4),
           "| max P_keep", round(max(case["v3"]["p_keep"]), 3), "| I v0", round(case["v0"]["integrity"], 3),
           "v2", round(case["v2"]["integrity"], 3), "v3", round(case["v3"]["integrity"], 3),
-          "| danger v0", round(case["v0"]["danger"], 4), "v2", round(case["v2"]["danger"], 4), "v3", round(case["v3"]["danger"], 4))
+          "| danger v0", round(case["v0"]["danger"], 4), "v2", round(case["v2"]["danger"], 4), "v3", round(case["v3"]["danger"], 4),
+          "| extended v0", round(case["v0"]["danger_ext"], 4), "v2", round(case["v2"]["danger_ext"], 4), "v3", round(case["v3"]["danger_ext"], 4))
 use(FITTED, VM, CARRY)
 out = ROOT / "model_viewer" / "test" / "fixtures.json"
 out.parent.mkdir(exist_ok=True)
